@@ -1,59 +1,95 @@
-"""
-FINAL JPM-READY INSERT SCRIPT
---------------------------------
-• Connects to OpenSearch
-• Uses Azure OpenAI embedding (text-embedding-ada-002)
-• Creates index if not exists
-• Inserts the combined performLogin() method
-• Deletes old login fragments to avoid wrong matches
-"""
-
 import os
+import logging
+from dotenv import load_dotenv
+from azure.identity import CertificateCredential
+from openai import AzureOpenAI
 from opensearchpy import OpenSearch
-from openai import OpenAI
-import warnings
-warnings.filterwarnings("ignore")
 
 # --------------------------------------------
-# 🔥 OpenSearch Configuration
+# LOAD ENV
 # --------------------------------------------
-OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+
 INDEX_NAME = "madl_methods_v2"
 VECTOR_FIELD = "embedding"
-EMBED_DIM = 1536
 
-client_os = OpenSearch(
-    hosts=[OPENSEARCH_URL],
-    use_ssl=True,
-    verify_certs=False
+
+# ----------------------------------------------------------
+# 🔥 1. Get Azure Access Token (Certificate + Tenant + Client)
+# ----------------------------------------------------------
+def get_access_token():
+    cert_path = os.environ["CERTIFICATE_PATH"]
+    tenant_id = os.environ["AZURE_TENANT_ID"]
+    client_id = os.environ["AZURE_CLIENT_ID"]
+    scope = "https://cognitiveservices.azure.com/.default"
+
+    credential = CertificateCredential(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        certificate_path=cert_path,
+    )
+
+    token = credential.get_token(scope).token
+    logging.info("✔ Azure Access Token Retrieved")
+    return token
+
+
+# ----------------------------------------------------------
+# 🔥 2. Azure OpenAI Client (Embeddings)
+# ----------------------------------------------------------
+client_ai = AzureOpenAI(
+    api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    default_headers={
+        "Authorization": f"Bearer {get_access_token()}",
+        "api-key": os.environ["AZURE_OPENAI_API_KEY"],
+    }
 )
-
-print("Connected to OpenSearch:", client_os.info())
-
-
-# --------------------------------------------
-# 🔥 Azure OpenAI Embedding Client
-# --------------------------------------------
-client_ai = OpenAI()
 
 
 def embed(text: str):
-    """Generate OpenAI ada-002 embedding"""
+    """Generate Azure OpenAI Ada-002 embedding"""
     response = client_ai.embeddings.create(
-        model="text-embedding-ada-002",
+        model=os.environ["EMBEDDING_DEPLOYMENT_NAME"],
         input=text
     )
     return response.data[0].embedding
 
 
-# --------------------------------------------
-# STEP 1 — Create index if needed
-# --------------------------------------------
-if not client_os.indices.exists(index=INDEX_NAME):
+# ----------------------------------------------------------
+# 🔥 3. OpenSearch Client
+# ----------------------------------------------------------
+OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
+
+client_os = OpenSearch(
+    hosts=[OPENSEARCH_URL],
+    http_compress=True,
+    use_ssl=True,
+    verify_certs=False,
+)
+
+print("Connected to OpenSearch:", client_os.info())
+
+
+# ----------------------------------------------------------
+# 🔥 4. Create Index (if missing)
+# ----------------------------------------------------------
+def ensure_index():
+    exists = client_os.indices.exists(index=INDEX_NAME)
+    if exists:
+        print(f"ℹ️ Index already exists: {INDEX_NAME}")
+        return
+
     print(f"Creating index: {INDEX_NAME}")
 
     index_body = {
-        "settings": {"index": {"knn": True}},
+        "settings": {
+            "index": {
+                "knn": True
+            }
+        },
         "mappings": {
             "properties": {
                 "method_name": {"type": "keyword"},
@@ -68,7 +104,7 @@ if not client_os.indices.exists(index=INDEX_NAME):
 
                 VECTOR_FIELD: {
                     "type": "knn_vector",
-                    "dimension": EMBED_DIM,
+                    "dimension": 1536,
                     "method": {
                         "name": "hnsw",
                         "space_type": "l2",
@@ -80,71 +116,75 @@ if not client_os.indices.exists(index=INDEX_NAME):
     }
 
     client_os.indices.create(index=INDEX_NAME, body=index_body)
-    print("✅ Index created!")
-else:
-    print(f"ℹ️ Index already exists: {INDEX_NAME}")
+    print("✅ Index created successfully!")
 
 
-# --------------------------------------------
-# STEP 2 — CLEANUP OLD LOGIN METHODS (IMPORTANT)
-# --------------------------------------------
-delete_ids = [
-    "login",
-    "enter_username",
-    "enter_password",
-    "click_login"
-]
+# ----------------------------------------------------------
+# 🔥 5. Insert Method Metadata
+# ----------------------------------------------------------
+def insert_method(
+    method_name: str,
+    class_name: str,
+    intent: str,
+    semantic_description: str,
+    keywords: list,
+    parameters: str,
+    method_code: str,
+):
+    full_signature = f"{method_name}{parameters}"
 
-for did in delete_ids:
-    try:
-        client_os.delete(index=INDEX_NAME, id=did)
-        print(f"🗑️ Deleted old method: {did}")
-    except:
-        pass
+    embedding_text = " ".join([
+        semantic_description,
+        intent,
+        " ".join(keywords),
+        method_name,
+        parameters
+    ])
+
+    vector = embed(embedding_text)
+
+    doc = {
+        "method_name": method_name,
+        "class_name": class_name,
+        "intent": intent,
+        "semantic_description": semantic_description,
+        "keywords": keywords,
+        "parameters": parameters,
+        "return_type": "void",
+        "full_signature": full_signature,
+        "method_code": method_code,
+        VECTOR_FIELD: vector
+    }
+
+    response = client_os.index(
+        index=INDEX_NAME,
+        id=f"method_{method_name.lower()}",
+        body=doc,
+        refresh=True
+    )
+
+    print(f"✅ Successfully inserted {method_name}() method!")
+    print(response)
 
 
-# --------------------------------------------
-# STEP 3 — Insert the FINAL combined login method
-# --------------------------------------------
-method_id = "perform_login_combined"
+# ----------------------------------------------------------
+# 🔥 6. MAIN
+# ----------------------------------------------------------
+if __name__ == "__main__":
+    ensure_index()
 
-method_doc = {
-    "method_name": "performLogin",
-    "class_name": "LoginPage",
-    "intent": "login with username and password",
-    "semantic_description": "enter username, enter password, and click login button",
-    "keywords": [
-        "login", "username", "password",
-        "enter username", "enter password", "click login button"
-    ],
-    "parameters": "(username, password)",
-    "return_type": "void",
-    "full_signature": "performLogin(username, password)",
-    "method_code": """
-def performLogin(self, username, password):
+    # Example method: LOGIN (username + password + click)
+    insert_method(
+        method_name="login",
+        class_name="LoginPage",
+        intent="login with username and password",
+        semantic_description="perform login using username and password and click login button",
+        keywords=["login", "username", "password", "credentials", "click", "submit"],
+        parameters="(username: str, password: str)",
+        method_code="""
+def login(self, username, password):
     self.page.get_by_placeholder("Username").fill(username)
     self.page.get_by_placeholder("Password").fill(password)
     self.page.get_by_role("button", name="Login").click()
 """
-}
-
-# Create embedding text
-embedding_text = " ".join([
-    method_doc["semantic_description"],
-    method_doc["intent"],
-    " ".join(method_doc["keywords"]),
-    method_doc["method_name"]
-])
-
-method_doc[VECTOR_FIELD] = embed(embedding_text)
-
-# Insert into OpenSearch
-response = client_os.index(
-    index=INDEX_NAME,
-    id=method_id,
-    body=method_doc,
-    refresh=True
-)
-
-print("✅ Successfully inserted combined performLogin() method!")
-print(response)
+    )
