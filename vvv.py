@@ -1,25 +1,57 @@
-from opensearchpy import OpenSearch
+import os
+import logging
+from azure.identity import CertificateCredential
 from openai import AzureOpenAI
+from opensearchpy import OpenSearch
 
-# ============================================================
-# 🔧 CONFIGURATION
-# ============================================================
+# =====================================================================
+# 1️⃣ JPMC Certificate-Based AAD Authentication (REQUIRED)
+# =====================================================================
+def get_access_token():
+    dir_path = os.path.dirname(os.path.realpath(__file__))
 
-# 🔹 OpenSearch REST API endpoint (use the 9200 endpoint)
+    # path to .pem file your client gave you
+    cert_path = os.path.join(dir_path, "JPMC1_cert/uatagent.azure.jpmchase.new.pem")
+
+    scope = "https://cognitiveservices.azure.com/.default"
+
+    credential = CertificateCredential(
+        client_id=os.environ["AZURE_CLIENT_ID"],
+        tenant_id=os.environ["AZURE_TENANT_ID"],
+        certificate_path=cert_path,
+    )
+
+    token = credential.get_token(scope).token
+    logging.info("Access token retrieved")
+    return token
+
+
+# =====================================================================
+# 2️⃣ CONNECT TO AZURE OPENAI USING JPMC TOKEN + API KEY
+# =====================================================================
+def get_azure_client():
+    access_token = get_access_token()
+
+    client = AzureOpenAI(
+        api_key=os.environ["AZURE_OPENAI_API_KEY"],
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+        default_headers={
+            "Authorization": f"Bearer {access_token}",
+            "user_sid": "REPLACE",
+            "api-key": os.environ["AZURE_OPENAI_API_KEY"],
+        }
+    )
+
+    return client
+
+
+# =====================================================================
+# 3️⃣ Connect to OpenSearch
+# =====================================================================
 OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
 INDEX_NAME = "madl_methods_v2"
 VECTOR_FIELD = "embedding"
-
-# 🔹 Azure OpenAI Config
-AZURE_OPENAI_ENDPOINT = "https://YOUR-AZURE-RESOURCE.openai.azure.com/"
-AZURE_OPENAI_API_KEY = "YOUR-AZURE-OPENAI-KEY"
-AZURE_OPENAI_EMBED_DEPLOYMENT = "text-embedding-ada-002"   # as your client shared
-AZURE_OPENAI_API_VERSION = "2024-02-01"
-
-
-# ============================================================
-# 🔌 CONNECT TO OPENSEARCH
-# ============================================================
 
 os_client = OpenSearch(
     hosts=[OPENSEARCH_URL],
@@ -30,44 +62,39 @@ os_client = OpenSearch(
 print("Connected to OpenSearch:", os_client.info())
 
 
-# ============================================================
-# 🤖 CONNECT TO AZURE OPENAI
-# ============================================================
-
-ai_client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT
-)
-
-
-# ============================================================
-# 🔍 AZURE OPENAI EMBEDDING FUNCTION
-# ============================================================
-
+# =====================================================================
+# 4️⃣ Embedding Function (using JPMC Azure Auth)
+# =====================================================================
 def embed(text: str):
-    response = ai_client.embeddings.create(
-        model=AZURE_OPENAI_EMBED_DEPLOYMENT,   # 🚀 Azure uses deployment name here
+    azure_client = get_azure_client()
+
+    response = azure_client.embeddings.create(
+        model=os.environ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT"],  # ex: text-embedding-ada-002
         input=text
     )
-    return response.data[0].embedding   # 1536-dimensional vector
+
+    return response.data[0].embedding
 
 
-# ============================================================
-# 📌 CREATE INDEX IF NOT EXISTS
-# ============================================================
-
-if not os_client.indices.exists(INDEX_NAME):
-    print(f"🔧 Creating index: {INDEX_NAME}")
+# =====================================================================
+# 5️⃣ Create index if not exists
+# =====================================================================
+if not os_client.indices.exists(index=INDEX_NAME):
+    print(f"Creating index: {INDEX_NAME}")
 
     index_body = {
-        "settings": {
-            "index": {
-                "knn": True
-            }
-        },
+        "settings": {"index": {"knn": True}},
         "mappings": {
             "properties": {
+                VECTOR_FIELD: {
+                    "type": "knn_vector",
+                    "dimension": 1536,
+                    "method": {
+                        "name": "hnsw",
+                        "engine": "faiss",
+                        "space_type": "l2"
+                    }
+                },
                 "method_name": {"type": "keyword"},
                 "class_name": {"type": "keyword"},
                 "intent": {"type": "text"},
@@ -77,30 +104,20 @@ if not os_client.indices.exists(INDEX_NAME):
                 "return_type": {"type": "keyword"},
                 "full_signature": {"type": "text"},
                 "method_code": {"type": "text"},
-
-                VECTOR_FIELD: {
-                    "type": "knn_vector",
-                    "dimension": 1536,    # ADA-002 embedding size
-                    "method": {
-                        "name": "hnsw",
-                        "engine": "faiss",
-                        "space_type": "l2"
-                    }
-                }
             }
         }
     }
 
     os_client.indices.create(index=INDEX_NAME, body=index_body)
-    print("✅ Index created successfully.")
+    print("Index created successfully.")
+
 else:
-    print(f"ℹ️ Index '{INDEX_NAME}' already exists.")
+    print("Index already exists")
 
 
-# ============================================================
-# 📘 SAMPLE METHOD — Replace With Real Data
-# ============================================================
-
+# =====================================================================
+# 6️⃣ INSERT SAMPLE METHOD
+# =====================================================================
 method = {
     "method_name": "login",
     "class_name": "LoginPage",
@@ -119,10 +136,7 @@ def login(self, username, password):
 }
 
 
-# ============================================================
-# 🧠 BUILD EMBEDDING TEXT
-# ============================================================
-
+# Build embedding text
 embedding_text = " ".join([
     method["semantic_description"],
     method["intent"],
@@ -132,11 +146,6 @@ embedding_text = " ".join([
 ])
 
 vector = embed(embedding_text)
-
-
-# ============================================================
-# 📩 INSERT INTO OPENSEARCH
-# ============================================================
 
 document = {**method, VECTOR_FIELD: vector}
 
