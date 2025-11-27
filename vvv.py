@@ -1,151 +1,150 @@
-import os
-import logging
-from azure.identity import CertificateCredential
-from openai import AzureOpenAI
-
-def get_azure_client():
-    """
-    Returns a configured AzureOpenAI client using certificate-based authentication.
-    """
-    tenant_id = os.environ["AZURE_TENANT_ID"]
-    client_id = os.environ["AZURE_CLIENT_ID"]
-    cert_path = os.environ["CERTIFICATE_PATH"]
-    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-    api_key = os.environ["AZURE_OPENAI_API_KEY"]
-    api_version = os.environ["AZURE_OPENAI_API_VERSION"]
-
-    scope = "https://cognitiveservices.azure.com/.default"
-
-    logging.info("Fetching access token using CertificateCredential...")
-
-    credential = CertificateCredential(
-        tenant_id=tenant_id,
-        client_id=client_id,
-        certificate_path=cert_path
-    )
-
-    access_token = credential.get_token(scope).token
-    logging.info("Access token retrieved.")
-
-    client = AzureOpenAI(
-        api_key=api_key,
-        azure_endpoint=endpoint,
-        api_version=api_version,
-        default_headers={
-            "Authorization": f"Bearer {access_token}"
-        }
-    )
-
-    return client
--------------------------------------------------
-
-
-
+"""
+FINAL JPM-READY INSERT SCRIPT
+--------------------------------
+• Connects to OpenSearch
+• Uses Azure OpenAI embedding (text-embedding-ada-002)
+• Creates index if not exists
+• Inserts the combined performLogin() method
+• Deletes old login fragments to avoid wrong matches
+"""
 
 import os
-from .azure_client import get_azure_client
-
-def generate_embedding(text: str):
-    client = get_azure_client()
-
-    deployment = os.environ["EMBEDDING_DEPLOYMENT_NAME"]
-
-    response = client.embeddings.create(
-        model=deployment,
-        input=text
-    )
-
-    return response.data[0].embedding
-------------------------------------------------
-
-
 from opensearchpy import OpenSearch
-import os
+from openai import OpenAI
+import warnings
+warnings.filterwarnings("ignore")
 
-# Your OS URL
+# --------------------------------------------
+# 🔥 OpenSearch Configuration
+# --------------------------------------------
 OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
-
-def get_os_client():
-    return OpenSearch(
-        hosts=[OPENSEARCH_URL],
-        verify_certs=False,
-        use_ssl=True,
-        ssl_show_warn=False,
-    )
-
-
-------------------------------------------------------
-
-from .opensearch_client import get_os_client
-from .azure_embeddings import generate_embedding
-
-INDEX_NAME = "madl_methods_v2"
-
-def insert_method(doc_id: str, payload: dict):
-    os_client = get_os_client()
-
-    # Build short embedding text
-    combined_text = " ".join([
-        payload.get("semantic_description", ""),
-        payload.get("intent", ""),
-        " ".join(payload.get("keywords", [])),
-        payload.get("method_name", ""),
-        payload.get("parameters", "")
-    ])
-
-    vector = generate_embedding(combined_text)
-
-    body = {
-        "method_name": payload["method_name"],
-        "class_name": payload["class_name"],
-        "intent": payload["intent"],
-        "semantic_description": payload["semantic_description"],
-        "keywords": payload["keywords"],
-        "parameters": payload["parameters"],
-        "return_type": payload["return_type"],
-        "full_signature": payload["full_signature"],
-        "method_code": payload["method_code"],
-        "embedding": vector
-    }
-
-    os_client.index(
-        index=INDEX_NAME,
-        id=doc_id,
-        body=body
-    )
-
-    print(f"Inserted method: {doc_id}")
-
-
--------------------------------------------------------------------
-from .opensearch_client import get_os_client
-from .azure_embeddings import generate_embedding
-
 INDEX_NAME = "madl_methods_v2"
 VECTOR_FIELD = "embedding"
+EMBED_DIM = 1536
 
-def knn_search(query: str, top_k: int = 5):
-    os_client = get_os_client()
+client_os = OpenSearch(
+    hosts=[OPENSEARCH_URL],
+    use_ssl=True,
+    verify_certs=False
+)
 
-    query_vector = generate_embedding(query)
+print("Connected to OpenSearch:", client_os.info())
 
-    body = {
-        "size": top_k,
-        "query": {
-            "knn": {
+
+# --------------------------------------------
+# 🔥 Azure OpenAI Embedding Client
+# --------------------------------------------
+client_ai = OpenAI()
+
+
+def embed(text: str):
+    """Generate OpenAI ada-002 embedding"""
+    response = client_ai.embeddings.create(
+        model="text-embedding-ada-002",
+        input=text
+    )
+    return response.data[0].embedding
+
+
+# --------------------------------------------
+# STEP 1 — Create index if needed
+# --------------------------------------------
+if not client_os.indices.exists(index=INDEX_NAME):
+    print(f"Creating index: {INDEX_NAME}")
+
+    index_body = {
+        "settings": {"index": {"knn": True}},
+        "mappings": {
+            "properties": {
+                "method_name": {"type": "keyword"},
+                "class_name": {"type": "keyword"},
+                "intent": {"type": "text"},
+                "semantic_description": {"type": "text"},
+                "keywords": {"type": "keyword"},
+                "parameters": {"type": "text"},
+                "return_type": {"type": "keyword"},
+                "full_signature": {"type": "text"},
+                "method_code": {"type": "text"},
+
                 VECTOR_FIELD: {
-                    "vector": query_vector,
-                    "k": top_k
+                    "type": "knn_vector",
+                    "dimension": EMBED_DIM,
+                    "method": {
+                        "name": "hnsw",
+                        "space_type": "l2",
+                        "engine": "faiss"
+                    }
                 }
             }
         }
     }
 
-    response = os_client.search(
-        index=INDEX_NAME,
-        body=body
-    )
+    client_os.indices.create(index=INDEX_NAME, body=index_body)
+    print("✅ Index created!")
+else:
+    print(f"ℹ️ Index already exists: {INDEX_NAME}")
 
-    hits = response["hits"]["hits"]
-    return hits
-----------------------------------------------------
+
+# --------------------------------------------
+# STEP 2 — CLEANUP OLD LOGIN METHODS (IMPORTANT)
+# --------------------------------------------
+delete_ids = [
+    "login",
+    "enter_username",
+    "enter_password",
+    "click_login"
+]
+
+for did in delete_ids:
+    try:
+        client_os.delete(index=INDEX_NAME, id=did)
+        print(f"🗑️ Deleted old method: {did}")
+    except:
+        pass
+
+
+# --------------------------------------------
+# STEP 3 — Insert the FINAL combined login method
+# --------------------------------------------
+method_id = "perform_login_combined"
+
+method_doc = {
+    "method_name": "performLogin",
+    "class_name": "LoginPage",
+    "intent": "login with username and password",
+    "semantic_description": "enter username, enter password, and click login button",
+    "keywords": [
+        "login", "username", "password",
+        "enter username", "enter password", "click login button"
+    ],
+    "parameters": "(username, password)",
+    "return_type": "void",
+    "full_signature": "performLogin(username, password)",
+    "method_code": """
+def performLogin(self, username, password):
+    self.page.get_by_placeholder("Username").fill(username)
+    self.page.get_by_placeholder("Password").fill(password)
+    self.page.get_by_role("button", name="Login").click()
+"""
+}
+
+# Create embedding text
+embedding_text = " ".join([
+    method_doc["semantic_description"],
+    method_doc["intent"],
+    " ".join(method_doc["keywords"]),
+    method_doc["method_name"]
+])
+
+method_doc[VECTOR_FIELD] = embed(embedding_text)
+
+# Insert into OpenSearch
+response = client_os.index(
+    index=INDEX_NAME,
+    id=method_id,
+    body=method_doc,
+    refresh=True
+)
+
+print("✅ Successfully inserted combined performLogin() method!")
+print(response)
