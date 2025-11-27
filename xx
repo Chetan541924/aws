@@ -1,0 +1,130 @@
+import os
+import json
+import logging
+from opensearchpy import OpenSearch
+from madl_engine.azure_embeddings import generate_embedding   # ✅ your working embedder
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# --------------------------------------------
+# 🔥 OpenSearch Configuration
+# --------------------------------------------
+OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
+INDEX_NAME = "madl_methods_v2"
+VECTOR_FIELD = "embedding"
+
+client_os = OpenSearch(
+    hosts=[OPENSEARCH_URL],
+    use_ssl=True,
+    verify_certs=False
+)
+
+print("Connected to OpenSearch:", client_os.info())
+
+
+# --------------------------------------------
+# STEP 1 — Create index (only if missing)
+# --------------------------------------------
+index_exists = client_os.indices.exists(INDEX_NAME)
+
+if not index_exists:
+    print("Creating index:", INDEX_NAME)
+
+    index_body = {
+        "settings": {
+            "index": {
+                "knn": True
+            }
+        },
+        "mappings": {
+            "properties": {
+                "method_name": {"type": "keyword"},
+                "class_name": {"type": "keyword"},
+                "intent": {"type": "text"},
+                "semantic_description": {"type": "text"},
+                "keywords": {"type": "keyword"},
+                "parameters": {"type": "text"},
+                "return_type": {"type": "keyword"},
+                "full_signature": {"type": "text"},
+                "method_code": {"type": "text"},
+
+                VECTOR_FIELD: {
+                    "type": "knn_vector",
+                    "dimension": 1536,
+                    "method": {
+                        "name": "hnsw",
+                        "space_type": "l2",
+                        "engine": "faiss"
+                    }
+                }
+            }
+        }
+    }
+
+    client_os.indices.create(index=INDEX_NAME, body=index_body)
+    print("✅ Index created successfully!")
+else:
+    print("ℹ️ Index already exists:", INDEX_NAME)
+
+
+# --------------------------------------------
+# STEP 2 — METHOD METADATA
+# --------------------------------------------
+method_name = "login"
+class_name = "LoginPage"
+intent = "login with username and password"
+semantic_description = "perform login using username and password"
+keywords = ["login", "username", "password", "authenticate"]
+parameters = "(username: str, password: str)"
+return_type = "void"
+full_signature = "login(username: str, password: str)"
+
+method_code = """
+def login(self, username, password):
+    self.page.get_by_placeholder("Username").fill(username)
+    self.page.get_by_placeholder("Password").fill(password)
+    self.page.get_by_role("button", name="Login").click()
+"""
+
+
+# --------------------------------------------
+# STEP 3 — EMBEDDING TEXT
+# --------------------------------------------
+embedding_text = " ".join([
+    semantic_description,
+    intent,
+    " ".join(keywords),
+    method_name,
+    parameters
+])
+
+# ✅ Use JPM Azure OpenAI embedder
+vector = generate_embedding(embedding_text)
+
+
+# --------------------------------------------
+# STEP 4 — INSERT DOCUMENT
+# --------------------------------------------
+doc = {
+    "method_name": method_name,
+    "class_name": class_name,
+    "intent": intent,
+    "semantic_description": semantic_description,
+    "keywords": keywords,
+    "parameters": parameters,
+    "return_type": return_type,
+    "full_signature": full_signature,
+    "method_code": method_code,
+    VECTOR_FIELD: vector
+}
+
+response = client_os.index(
+    index=INDEX_NAME,
+    id="method_login",
+    body=doc,
+    refresh=True
+)
+
+print("✅ Successfully inserted login() method into OpenSearch!")
+print(json.dumps(response, indent=2))
