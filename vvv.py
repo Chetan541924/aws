@@ -1,14 +1,26 @@
 from opensearchpy import OpenSearch
-from openai import OpenAI
+from openai import AzureOpenAI
 
-# --------------------------------------------
-# 🔥 CONFIG
-# --------------------------------------------
+# ============================================================
+# 🔧 CONFIGURATION
+# ============================================================
+
+# 🔹 OpenSearch REST API endpoint (use the 9200 endpoint)
 OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
 INDEX_NAME = "madl_methods_v2"
 VECTOR_FIELD = "embedding"
 
-# Connect to OpenSearch
+# 🔹 Azure OpenAI Config
+AZURE_OPENAI_ENDPOINT = "https://YOUR-AZURE-RESOURCE.openai.azure.com/"
+AZURE_OPENAI_API_KEY = "YOUR-AZURE-OPENAI-KEY"
+AZURE_OPENAI_EMBED_DEPLOYMENT = "text-embedding-ada-002"   # as your client shared
+AZURE_OPENAI_API_VERSION = "2024-02-01"
+
+
+# ============================================================
+# 🔌 CONNECT TO OPENSEARCH
+# ============================================================
+
 os_client = OpenSearch(
     hosts=[OPENSEARCH_URL],
     use_ssl=True,
@@ -17,25 +29,36 @@ os_client = OpenSearch(
 
 print("Connected to OpenSearch:", os_client.info())
 
-# OpenAI client
-ai_client = OpenAI()
 
-# --------------------------------------------
-# Generate embedding using ADA-002 (1536 dims)
-# --------------------------------------------
+# ============================================================
+# 🤖 CONNECT TO AZURE OPENAI
+# ============================================================
+
+ai_client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT
+)
+
+
+# ============================================================
+# 🔍 AZURE OPENAI EMBEDDING FUNCTION
+# ============================================================
+
 def embed(text: str):
     response = ai_client.embeddings.create(
-        model="text-embedding-ada-002",
+        model=AZURE_OPENAI_EMBED_DEPLOYMENT,   # 🚀 Azure uses deployment name here
         input=text
     )
-    return response.data[0].embedding
+    return response.data[0].embedding   # 1536-dimensional vector
 
 
-# --------------------------------------------
-# Ensure index exists
-# --------------------------------------------
+# ============================================================
+# 📌 CREATE INDEX IF NOT EXISTS
+# ============================================================
+
 if not os_client.indices.exists(INDEX_NAME):
-    print(f"Creating index: {INDEX_NAME}")
+    print(f"🔧 Creating index: {INDEX_NAME}")
 
     index_body = {
         "settings": {
@@ -57,11 +80,11 @@ if not os_client.indices.exists(INDEX_NAME):
 
                 VECTOR_FIELD: {
                     "type": "knn_vector",
-                    "dimension": 1536,
+                    "dimension": 1536,    # ADA-002 embedding size
                     "method": {
                         "name": "hnsw",
-                        "space_type": "l2",
-                        "engine": "faiss"
+                        "engine": "faiss",
+                        "space_type": "l2"
                     }
                 }
             }
@@ -69,15 +92,15 @@ if not os_client.indices.exists(INDEX_NAME):
     }
 
     os_client.indices.create(index=INDEX_NAME, body=index_body)
-    print("Index created successfully.")
+    print("✅ Index created successfully.")
 else:
-    print(f"Index '{INDEX_NAME}' already exists.")
+    print(f"ℹ️ Index '{INDEX_NAME}' already exists.")
 
 
-# --------------------------------------------
-# 🔥 Example Method metadata
-#   (Replace with your own values)
-# --------------------------------------------
+# ============================================================
+# 📘 SAMPLE METHOD — Replace With Real Data
+# ============================================================
+
 method = {
     "method_name": "login",
     "class_name": "LoginPage",
@@ -95,9 +118,11 @@ def login(self, username, password):
 """
 }
 
-# --------------------------------------------
-# Build embedding text
-# --------------------------------------------
+
+# ============================================================
+# 🧠 BUILD EMBEDDING TEXT
+# ============================================================
+
 embedding_text = " ".join([
     method["semantic_description"],
     method["intent"],
@@ -108,9 +133,11 @@ embedding_text = " ".join([
 
 vector = embed(embedding_text)
 
-# --------------------------------------------
-# Insert document into OpenSearch
-# --------------------------------------------
+
+# ============================================================
+# 📩 INSERT INTO OPENSEARCH
+# ============================================================
+
 document = {**method, VECTOR_FIELD: vector}
 
 response = os_client.index(
@@ -120,5 +147,5 @@ response = os_client.index(
     refresh=True
 )
 
-print("✅ Successfully inserted reusable method into OpenSearch!")
+print("🎉 Successfully inserted reusable method into OpenSearch!")
 print(response)
