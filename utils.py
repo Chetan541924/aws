@@ -1,208 +1,160 @@
-import string
-from datetime import datetime, date
-from typing import Optional
+# ==================== utils.py – FINAL VERSION (Single-File Ready) ====================
 
+import string
+from datetime import datetime
+from typing import Optional
 from jose import JWTError, jwt
 from fastapi import HTTPException
 import logging
-from concurrent.futures import ThreadPoolExecutor
-import asyncio
-import os
-import tempfile
-import subprocess
-import sys
-import io
 import json
-import traceback
-from selenium import webdriver
-from app.config import SECRET_KEY, ALGORITHM
-from app.database import get_db_connection
+import asyncio
 
-# Set up logging
+# Logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
-# Function to generate prefix from role
+# Use these from your main file (defined there)
+# SECRET_KEY, ALGORITHM, get_db_connection must exist in main.py
+
+# ==================== ROLE PREFIX ====================
 def get_prefix_from_role(role: str) -> Optional[str]:
     if not role.startswith("role-"):
         return None
     try:
         role_num = int(role.split("-")[1])
-        if role_num < 1 or role_num > 26:  # Limit to a-z
-            return None
-        return string.ascii_lowercase[role_num - 1]
-    except (ValueError, IndexError):
-        return None
+        if 1 <= role_num <= 26:
+            return string.ascii_lowercase[role_num - 1]
+    except:
+        pass
+    return None
 
-# Function to generate next sequential projectid (PJ0001, PJ0002, etc.)
-async def get_next_projectid(conn):
-    max_pid = await conn.fetchval('SELECT MAX(projectid) FROM project')
-    if max_pid is None:
+# ==================== ID GENERATORS ====================
+async def get_next_projectid(conn) -> str:
+    row = await (await conn.execute("SELECT projectid FROM project ORDER BY projectid DESC LIMIT 1")).fetchone()
+    if not row:
         return "PJ0001"
     try:
-        # Extract the numeric part after 'PJ' and increment
-        num = int(max_pid[2:]) + 1  # Assumes format 'PJxxxx' where xxxx is 4-digit number
-        return f"PJ{num:04d}"  # Pad to 4 digits for consistency
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=500, detail="Invalid projectid format in database. Expected 'PJxxxx'.")
+        num = int(row["projectid"][2:]) + 1
+        return f"PJ{num:04d}"
+    except:
+        raise HTTPException(status_code=500, detail="Corrupted projectid in database")
 
-# Function to generate next sequential testcaseid (TC0001, TC0002, etc.)
-async def get_next_testcaseid(conn):
-    max_tid = await conn.fetchval('SELECT MAX(testcaseid) FROM testcase')
-    if max_tid is None:
+async def get_next_testcaseid(conn) -> str:
+    row = await (await conn.execute("SELECT testcaseid FROM testcase ORDER BY testcaseid DESC LIMIT 1")).fetchone()
+    if not row:
         return "TC0001"
     try:
-        # Extract the numeric part after 'TC' and increment
-        num = int(max_tid[2:]) + 1  # Assumes format 'TCxxxx' where xxxx is 4-digit number
-        return f"TC{num:04d}"  # Pad to 4 digits for consistency
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=500, detail="Invalid testcaseid format in database. Expected 'TCxxxx'.")
+        num = int(row["testcaseid"][2:]) + 1
+        return f"TC{num:04d}"
+    except:
+        raise HTTPException(status_code=500, detail="Corrupted testcaseid in database")
 
-async def get_next_exeid(conn):
-    """Generate the next sequential exeid (EX0001, EX0002, etc.) with robust handling."""
-    max_eid = await conn.fetchval('SELECT MAX(exeid) FROM execution')
-    if max_eid is None:
-        return "EX0001"  # Start with EX0001 if table is empty
+async def get_next_exeid(conn) -> str:
+    row = await (await conn.execute("SELECT exeid FROM execution ORDER BY exeid DESC LIMIT 1")).fetchone()
+    if not row:
+        return "EX0001"
     try:
-        if not max_eid.startswith("EX") or len(max_eid) != 6 or not max_eid[2:].isdigit():
-            raise ValueError(f"Invalid exeid format: {max_eid}. Expected 'EX' followed by 4 digits.")
-        num = int(max_eid[2:]) + 1  # Extract and increment the numeric part
-        if num > 9999:  # Prevent overflow beyond EX9999
-            raise ValueError("Exceeded maximum exeid limit (EX9999).")
-        return f"EX{num:04d}"  # Pad to 4 digits
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=f"Invalid exeid format in database: {str(e)}. Please correct existing data or clear the execution table.")
+        num = int(row["exeid"][2:]) + 1
+        if num > 9999:
+            raise ValueError("EX9999 limit reached")
+        return f"EX{num:04d}"
+    except:
+        raise HTTPException(status_code=500, detail="Corrupted exeid in database")
 
-# Dummy user validation (replace with your logic)
+# ==================== TOKEN VALIDATION ====================
 async def validate_token(token: str):
     try:
-        logger.debug(f"Validating token: {token}")  # Log full token for debugging
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        userid = payload.get("userid")  # Changed from "sub" to "userid"
+        userid = payload.get("userid")
         if not userid:
-            logger.error(f"Token payload invalid: {payload}")
+            logger.error(f"Invalid token payload: {payload}")
             return None
-        logger.debug(f"Token validated, userid: {userid}")
         return {"userid": userid}
     except JWTError as e:
-        logger.error(f"Token decoding failed: {str(e)} with token: {token}")
+        logger.error(f"Token validation failed: {e}")
         return None
 
-def indent_block(text, prefix, skip_first_line=False):
-    """Indent each line in text with the given prefix, optionally skipping the first line and handling 'with' blocks."""
-    # If no newlines, add breaks after semicolons and ensure 'with' statements stay intact
-    if '\n' not in text:
-        # Split by semicolons first, then clean up
-        parts = text.split(';')
-        text = '\n'.join(part.strip() + ';' for part in parts if part.strip())
-        # Ensure 'with' statements are not split
-        text = text.replace('with ', 'with\n    ').replace('\n\n', '\n')
-    lines = text.split('\n')
-    if not lines:
+# ==================== INDENT HELPER ====================
+def indent_block(text: str, prefix: str = "    ", skip_first_line: bool = False) -> str:
+    if not text.strip():
         return text
+    lines = text.splitlines()
     result = []
-    indent_next = skip_first_line  # Flag to indent lines after the first 'with' or skipped line
+    do_indent = skip_first_line
     for i, line in enumerate(lines):
-        stripped_line = line.lstrip()
-        if not stripped_line:
+        stripped = line.lstrip()
+        if not stripped:
+            result.append("")
             continue
         if skip_first_line and i == 0:
-            result.append(line)  # Keep the first line unindented
-            if 'with' in stripped_line:
-                indent_next = True  # Set flag to indent the next line after 'with'
-        elif indent_next:
-            result.append(prefix + stripped_line)  # Indent lines after 'with'
-            if not stripped_line.startswith('with'):  # Reset indent_next after the block starts
-                indent_next = False
+            result.append(line)
+            if "with " in stripped:
+                do_indent = True
+        elif do_indent:
+            result.append(prefix + stripped)
+            if not stripped.startswith("with"):
+                do_indent = False
         else:
-            result.append(prefix + stripped_line)  # Indent other lines
-    return '\n'.join(result)
+            result.append(prefix + stripped)
+    return "\n".join(result)
 
-# ------------------------------------------------------------------
-# HELPER: Save one test case + steps
-# ------------------------------------------------------------------
-async def _save_testcase_and_steps(
-    conn,
-    tc_id: str,
-    data: dict,
-    steps: list,
-    args: list,
-    allowed_projects: set
-):
-    # --- 1. Resolve Test Case ID ---
-    if not tc_id or tc_id in ("", "nan", "None"):
-        tc_id = await get_next_testcaseid(conn)
-    else:
-        exists = await conn.fetchrow("SELECT 1 FROM testcase WHERE testcaseid = $1", tc_id)
-        if exists:
-            raise HTTPException(status_code=400, detail=f"Test Case ID '{tc_id}' already exists")
-
-    # --- 2. Parse tags & projects ---
-    tags = [t.strip() for t in data["tags_raw"].replace(';', ',').split(',') if t.strip()]
-    projectids = [p.strip() for p in data["proj_raw"].replace(';', ',').split(',') if p.strip()]
-
-    # --- 3. Validate project access ---
-    if not projectids:
-        raise HTTPException(status_code=400, detail="Project ID is required")
-    if not (set(projectids) <= allowed_projects):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Access denied to project(s): {set(projectids) - allowed_projects}"
-        )
-
-    # --- 4. Validate step/arg count ---
-    if len(steps) != len(args):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Step count ({len(steps)}) ≠ Argument count ({len(args)}) for {tc_id}"
-        )
-    if len(steps) == 0:
-        raise HTTPException(status_code=400, detail=f"No steps defined for {tc_id}")
-
-    # --- 5. Insert testcase ---
-    await conn.execute(
-        """
-        INSERT INTO testcase (testcaseid, testdesc, pretestid, prereq, tag, projectid)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        tc_id, data["desc"], data["pretestid"], data["prereq"], tags, projectids
-    )
-
-    # --- 6. Insert teststep ---
-    await conn.execute(
-        """
-        INSERT INTO teststep (testcaseid, steps, args, stepnum)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (testcaseid) DO UPDATE
-        SET steps = EXCLUDED.steps, args = EXCLUDED.args, stepnum = EXCLUDED.stepnum
-        """,
-        tc_id, steps, args, len(steps)
-    )
-
-# Helper function to get prerequisite chain
-async def get_prereq_chain(conn, testcase_id: str, visited: set = None):
-    """Recursively get all prerequisite test cases in order."""
+# ==================== PREREQ CHAIN (RECURSIVE ====================
+async def get_prereq_chain(conn, testcase_id: str, visited: set = None) -> list:
+    """Return list of testcase IDs: [oldest_prereq, ..., current]"""
     if visited is None:
         visited = set()
     if testcase_id in visited:
-        return []
-
+        return []  # cycle protection
     visited.add(testcase_id)
-    chain = []
 
-    # Fetch pretestid
-    pretest_row = await conn.fetchrow(
-        "SELECT pretestid FROM testcase WHERE testcaseid = $1",
-        testcase_id
-    )
-    pretestid = pretest_row["pretestid"] if pretest_row else None
+    row = await (await conn.execute(
+        "SELECT pretestid FROM testcase WHERE testcaseid = ?",
+        (testcase_id,)
+    )).fetchone()
 
-    if pretestid:
-        # Recurse to get prereq chain
-        prereq_chain = await get_prereq_chain(conn, pretestid, visited)
-        chain.extend(prereq_chain)
+    if not row or not row["pretestid"]:
+        return [testcase_id]
 
-    # Add current test case
+    chain = await get_prereq_chain(conn, row["pretestid"], visited)
     chain.append(testcase_id)
-
     return chain
+
+# ==================== SAVE TESTCASE + STEPS (REUSABLE) ====================
+async def save_testcase_with_steps(
+    conn,
+    tc_id: str,
+    desc: str,
+    pretestid: Optional[str],
+    prereq: str,
+    tags: list,
+    project_ids: list,
+    steps: list,
+    args: list,
+    created_by: str
+):
+    """Insert or update testcase + steps (used by upload & commit"""
+    await conn.execute("""
+        INSERT INTO testcase 
+        (testcaseid, testdesc, pretestid, prereq, tag, projectid, no_steps, created_on, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+        ON CONFLICT(testcaseid) DO UPDATE SET
+            testdesc=excluded.testdesc,
+            pretestid=excluded.pretestid,
+            prereq=excluded.prereq,
+            tag=excluded.tag,
+            projectid=excluded.projectid,
+            no_steps=excluded.no_steps
+    """, (tc_id, desc, pretestid, prereq, to_json(tags), to_json(project_ids), len(steps), created_by))
+
+    await conn.execute("DELETE FROM teststep WHERE testcaseid = ?", (tc_id,))
+    await conn.execute(
+        "INSERT INTO teststep (testcaseid, steps, args, stepnum) VALUES (?, ?, ?, ?)",
+        (tc_id, to_json(steps), to_json(args), len(steps))
+    )
+
+# ==================== JSON HELPERS (if not in main) ====================
+def to_json(val): return json.dumps(val or [])
+def from_json(val):
+    if not val or val == "[]": return []
+    try: return json.loads(val)
+    except: return []
