@@ -1,21 +1,5 @@
-# aws
-
-from opensearchpy import OpenSearch
-
-OPENSEARCH_URL = "https://learn-e779669-os-9200.tale-sandbox.dev.aws.jpmchase.net"
-
-client = OpenSearch(
-    hosts=[OPENSEARCH_URL],
-    use_ssl=True,
-    verify_certs=False
-)
-
-print("Connecting from Python...")
-
-try:
-    info = client.info()
-    print("✅ Python connected!")
-    print(info)
-except Exception as e:
-    print("❌ Python connection failed:")
-    print(e)
+Given the user is on the OrangeHRM login page
+When the user enters the username
+And the user enters the password
+And clicks the login button
+Then the user should be redirected to the dashboard
