@@ -1,0 +1,321 @@
+﻿<Page x:Class="jpmc_genai.ExecutionLogPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      mc:Ignorable="d"
+      d:DesignHeight="700" d:DesignWidth="1200"
+      Background="#FAF9F6"
+      Title="Execution Log"
+      Loaded="Page_Loaded">
+
+    <Page.Resources>
+        <!-- === REUSED SIDEBAR STYLES (Exact same as Dashboard & Executor) === -->
+        <Style TargetType="Button" x:Key="SidebarButtonTheme">
+            <Setter Property="Background" Value="#FFF6EC"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Width" Value="150"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="BorderBrush" Value="#D4AF37"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.35"/>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="border" Property="Background" Value="#D4AF37"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" x:Key="ActiveSidebarButtonTheme" BasedOn="{StaticResource SidebarButtonTheme}">
+            <Setter Property="IsEnabled" Value="False"/>
+            <Setter Property="Foreground" Value="#D4AF37"/>
+            <Setter Property="BorderBrush" Value="#D4AF37"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="#FFF6EC" BorderBrush="#D4AF37" CornerRadius="10" BorderThickness="0,0,0,3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Action Button (Generate Script) -->
+        <Style x:Key="GenerateScriptButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#D4AF37"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#B8952D"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#CCC"/>
+                                <Setter Property="Foreground" Value="#888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- SIDEBAR – NOW IDENTICAL TO DASHBOARD & EXECUTOR -->
+        <Border Grid.Column="0" Background="#F8F6F2" BorderBrush="#D4AF37" BorderThickness="0,0,2,0" CornerRadius="0,18,18,0">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.18"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Background="#D4AF37" Padding="18" CornerRadius="0,18,0,0">
+                    <TextBlock Text="JPMC Flux" Foreground="White" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Row="1" Margin="20,25,20,10">
+                    <Button Content="Project Dashboard" Click="BackToDashboard_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Manage Test Case" Click="UploadTestCase_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Smart Executor" Click="AITestExecutor_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Script Generator" Click="ScriptGenerator_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Execution Log" Style="{StaticResource ActiveSidebarButtonTheme}" Margin="0,0,0,12"/>
+                    
+                </StackPanel>
+
+                <Border Grid.Row="2" Margin="15,20" Padding="18" Background="White" CornerRadius="12" BorderBrush="#E2E1DC" BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="10" Opacity="0.15" ShadowDepth="2"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <TextBlock x:Name="ProjectTitleTextBlock" Foreground="#333" FontWeight="Bold" FontSize="20" Margin="0,0,0,5"/>
+                        <TextBlock x:Name="ProjectDetailsTextBlock" Foreground="#8C8575" FontSize="11"/>
+                        <Button Content="Change Project" Style="{StaticResource SidebarButtonTheme}" Click="ChangeProject_Click" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- MAIN CONTENT -->
+        <Grid Grid.Column="1" Margin="30,25">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,30">
+                <TextBlock Text="Execution History" FontSize="32" FontWeight="Bold" Foreground="#333"/>
+                <TextBlock Text="View all test execution logs and regenerate scripts from past runs" FontSize="14" Foreground="#8C8575" Margin="0,6,0,0"/>
+            </StackPanel>
+
+            <!-- Execution Log Table -->
+            <Border Grid.Row="1" Background="White" CornerRadius="20" BorderBrush="#E2E1DC" BorderThickness="1" Margin="0,0,0,20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" Opacity="0.12" ShadowDepth="6"/>
+                </Border.Effect>
+
+                <DataGrid x:Name="ExecutionLogDataGrid"
+                          Background="White"
+                          BorderThickness="0"
+                          RowHeight="48"
+                          FontSize="13"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#EEE"
+                          AlternatingRowBackground="#FFFBF5"
+                          AutoGenerateColumns="False"
+                          CanUserSortColumns="True"
+                          MouseDoubleClick="ExecutionLogDataGrid_DoubleClick"
+                          SelectionMode="Single">
+
+                    <DataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#FFF8F0"/>
+                            <Setter Property="Foreground" Value="#D4AF37"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="Padding" Value="16,0"/>
+                            <Setter Property="Height" Value="44"/>
+                            <Setter Property="BorderBrush" Value="#E2E1DC"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        </Style>
+                    </DataGrid.ColumnHeaderStyle>
+
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#FFF0E0"/>
+                                    <Setter Property="BorderBrush" Value="#D4AF37"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,3"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Execution ID" Binding="{Binding exeid}" Width="110"/>
+                        <DataGridTextColumn Header="Test Case ID" Binding="{Binding testcaseid}" Width="130"/>
+                        <DataGridTextColumn Header="Date" Binding="{Binding datestamp}" Width="110"/>
+                        <DataGridTextColumn Header="Time" Binding="{Binding exetime}" Width="150"/>
+                        <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="300"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="100">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#D9534F"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding status}" Value="Passed">
+                                            <Setter Property="Foreground" Value="#52B788"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding status}" Value="Failed">
+                                            <Setter Property="Foreground" Value="#D9534F"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <!-- Action Bar -->
+            <!-- Action Bar -->
+            <Border Grid.Row="2" Background="#FFF8F0" CornerRadius="16" Padding="24,20" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Vertical" Grid.Column="0" Margin="0,0,20,0">
+
+                        <!-- SELECTED EXECUTION -->
+                        <TextBlock x:Name="SelectedExecutionInfo"
+                       Text="Select a row to generate script"
+                       Foreground="#666"
+                       FontSize="13"
+                       Margin="0,0,0,12"/>
+
+                        <!-- OPTION SELECTORS -->
+                        <StackPanel Orientation="Horizontal" Margin="0,4">
+
+                            <!-- Pre-Requisite Selector -->
+                            <StackPanel Orientation="Vertical" Margin="0,0,20,0">
+                                <TextBlock Text="Pre-Requisite" 
+                               Foreground="#8C8575" 
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Margin="0,0,0,4"/>
+                                <ComboBox x:Name="PrereqSelector"
+                              Width="200"
+                              SelectedIndex="0"
+                              Background="White"
+                              BorderBrush="#D4AF37"
+                              BorderThickness="1"
+                              Padding="4">
+                                    <ComboBoxItem Content="Include Pre-Requisite"/>
+                                    <ComboBoxItem Content="Exclude Pre-Requisite"/>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- Script Type Selector -->
+                            <StackPanel Orientation="Vertical" Margin="0,0,20,0">
+                                <TextBlock Text="Script Type" 
+                               Foreground="#8C8575" 
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Margin="0,0,0,4"/>
+                                <ComboBox x:Name="ScriptTypeSelector"
+                              Width="200"
+                              SelectedIndex="0"
+                              Background="White"
+                              BorderBrush="#D4AF37"
+                              BorderThickness="1"
+                              Padding="4">
+                                    <ComboBoxItem Content="Playwright"/>
+                                    <ComboBoxItem Content="Selenium"/>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- Script Language Selector -->
+                            <StackPanel Orientation="Vertical">
+                                <TextBlock Text="Script Language" 
+                               Foreground="#8C8575" 
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Margin="0,0,0,4"/>
+                                <ComboBox x:Name="ScriptLangSelector"
+                              Width="200"
+                              SelectedIndex="0"
+                              Background="White"
+                              BorderBrush="#D4AF37"
+                              BorderThickness="1"
+                              Padding="4">
+                                    <ComboBoxItem Content="Python"/>
+                                    <ComboBoxItem Content="Java"/>
+                                </ComboBox>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- GENERATE BUTTON -->
+                    <Button Grid.Column="1"
+                x:Name="GenerateScriptButton"
+                Content="Generate Script"
+                Style="{StaticResource GenerateScriptButtonStyle}"
+                Click="GenerateScript_Click"
+                IsEnabled="False"/>
+                </Grid>
+            </Border>
+
+
+            <!-- Status Bar -->
+            <Border Grid.Row="3" Background="#F8F6F2" CornerRadius="12" Padding="20,12">
+                <TextBlock x:Name="StatusTextBlock" 
+                           Text="Ready" 
+                           Foreground="#8C8575" 
+                           FontSize="12"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>
