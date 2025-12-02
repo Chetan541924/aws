@@ -1,0 +1,347 @@
+﻿<Page x:Class="jpmc_genai.AITestExecutorPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      mc:Ignorable="d"
+      d:DesignHeight="900" d:DesignWidth="1400"
+      Background="#FAF9F6"
+      Title="AI Test Executor">
+
+    <Page.Resources>
+        <!-- Sidebar Button Styles (Same as Dashboard) -->
+        <Style TargetType="Button" x:Key="SidebarButtonTheme">
+            <Setter Property="Background" Value="#FFF6EC"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Width" Value="150"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="BorderBrush" Value="#D4AF37"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="buttonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="buttonBorder" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.35"/>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="buttonBorder" Property="Background" Value="#D4AF37"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" x:Key="ActiveSidebarButtonTheme" BasedOn="{StaticResource SidebarButtonTheme}">
+            <Setter Property="IsEnabled" Value="False"/>
+            <Setter Property="Foreground" Value="#D4AF37"/>
+            <Setter Property="BorderBrush" Value="#D4AF37"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="#FFF6EC" BorderBrush="#D4AF37" CornerRadius="10" BorderThickness="0,0,0,3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Cards & Buttons -->
+        <Style x:Key="ModernCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="BorderBrush" Value="#E2E1DC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="12"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="16" Opacity="0.12" ShadowDepth="6"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#D4AF37"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#B8952D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ExecuteButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Background" Value="#52B788"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#44996E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SmallRedButton" TargetType="Button">
+            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ViewLogsButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1A73E8"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- SIDEBAR - IDENTICAL TO DASHBOARD -->
+        <Border Grid.Column="0" Background="#F8F6F2" BorderBrush="#D4AF37" BorderThickness="0,0,2,0" CornerRadius="0,18,18,0">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.18"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Background="#D4AF37" Padding="18" CornerRadius="0,18,0,0">
+                    <TextBlock Text="JPMC Flux" Foreground="White" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Row="1" Margin="20,25,20,10">
+                    <Button Content="Project Dashboard" Click="BackToDashboard_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Manage Test Case" Click="UploadTestCase_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Smart Executor" Style="{StaticResource ActiveSidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Script Generator" Click="ScriptGenerator_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    <Button Content="Execution Log" Click="ExecutionLog_Click" Style="{StaticResource SidebarButtonTheme}" Margin="0,0,0,12"/>
+                    
+                </StackPanel>
+
+                <Border Grid.Row="2" Margin="15,20" Padding="18" Background="White" CornerRadius="12" BorderBrush="#E2E1DC" BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="10" Opacity="0.15" ShadowDepth="2"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <TextBlock x:Name="ProjectTitleTextBlock" Foreground="#333" FontWeight="Bold" FontSize="20" Margin="0,0,0,5"/>
+                        <TextBlock x:Name="ProjectDetailsTextBlock" Foreground="#8C8575" FontSize="11"/>
+                        <Button Content="Change Project" Style="{StaticResource SidebarButtonTheme}" Click="ChangeProject_Click" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- MAIN CONTENT -->
+        <Grid Grid.Column="1" Margin="30,25">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,30">
+                <TextBlock Text="Smart Executor" FontSize="32" FontWeight="Bold" Foreground="#333"/>
+                <TextBlock Text="Select and execute AI-powered test cases with a single click" FontSize="14" Foreground="#8C8575" Margin="0,6,0,0"/>
+            </StackPanel>
+
+            <!-- Test Cases Table with Checkboxes -->
+            <Border Grid.Row="1" Style="{StaticResource ModernCard}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#FFF8F0" Padding="16,12" CornerRadius="18,18,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Test Cases" FontWeight="Bold" FontSize="15" Foreground="#D4AF37"/>
+                            <TextBlock x:Name="TestCaseCountTextBlock" Text="0 test cases" Foreground="#8C8575" FontSize="13" Grid.Column="1"/>
+                        </Grid>
+                    </Border>
+
+                    <DataGrid x:Name="TestCasesDataGrid"
+                              Grid.Row="1"
+                              Background="White"
+                              BorderThickness="0"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#EEE"
+                              RowHeight="48"
+                              FontSize="13"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              SelectionMode="Extended"
+                              HeadersVisibility="All"
+                              MouseDoubleClick="TestCasesDataGrid_MouseDoubleClick"
+                              SelectionChanged="TestCasesDataGrid_SelectionChanged">
+
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#FFF8F0"/>
+                                        <Setter Property="BorderBrush" Value="#D4AF37"/>
+                                        <Setter Property="BorderThickness" Value="0,0,0,3"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+
+                        <DataGrid.Columns>
+                            <!-- SELECT CHECKBOX COLUMN -->
+                            <DataGridTemplateColumn Width="50">
+                                <DataGridTemplateColumn.Header>
+                                    <CheckBox x:Name="SelectAllCheckBox"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Click="SelectAllCheckBox_Click"/>
+                                </DataGridTemplateColumn.Header>
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTextColumn Header="Scenario ID" Binding="{Binding testcaseid}" Width="120"/>
+                            <DataGridTextColumn Header="Scenario Name" Binding="{Binding testdesc}" Width="*"/>
+                            <DataGridTextColumn Header="Type" Binding="{Binding Type, FallbackValue='BDD'}" Width="100"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status, FallbackValue='Draft'}" Width="100"/>
+                            <DataGridTextColumn Header="Has Prereq" Binding="{Binding HasPrerequisite}" Width="100"/>
+                            <DataGridTextColumn Header="Prereq ID" Binding="{Binding PrerequisiteId}" Width="120"/>
+                            <DataGridTextColumn Header="Steps" Binding="{Binding StepCount}" Width="80"/>
+                            <DataGridTextColumn Header="Created" Binding="{Binding Created}" Width="100"/>
+                            <DataGridTextColumn Header="Last Updated" Binding="{Binding LastUpdated}" Width="100"/>
+                            <DataGridTextColumn Header="Last Executed" Binding="{Binding LastExecuted}" Width="100"/>
+                            <DataGridTextColumn Header="Result" Binding="{Binding LastExecutionStatus}" Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <!-- Action Bar -->
+            <Border Grid.Row="3" Background="#FFF8F0" CornerRadius="16" Padding="20,16" Margin="12,20,12,20">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="SelectedTestCaseTextBlock"
+                               Text="No test case selected"
+                               Foreground="#D4AF37"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               FontSize="13"/>
+                    <Button Grid.Column="2" Content="Load Test Details" Style="{StaticResource ActionButtonStyle}" Click="LoadTestDetailsButton_Click" Margin="8,0"/>
+                    <Button Grid.Column="3" Content="Load Test Plan" Style="{StaticResource ActionButtonStyle}" Click="LoadTestPlanButton_Click" Margin="8,0"/>
+                    <Button Grid.Column="4" Content="Execute" Style="{StaticResource ExecuteButtonStyle}" Click="ExecuteButton_Click" Margin="8,0"/>
+                </Grid>
+            </Border>
+
+            <!-- Execution History -->
+            <Border Grid.Row="4" Style="{StaticResource ModernCard}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="#FFF8F0" Padding="16,12" CornerRadius="18,18,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Execution History" FontWeight="Bold" FontSize="15" Foreground="#D4AF37"/>
+                            <Button Content="Clear History" Style="{StaticResource SmallRedButton}" Click="ClearExecutionHistory_Click" Grid.Column="1"/>
+                        </Grid>
+                    </Border>
+
+                    <DataGrid x:Name="ExecutionHistoryDataGrid" Grid.Row="1" Background="White" BorderThickness="0"
+                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEE" RowHeight="42"
+                              AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Execution ID" Binding="{Binding ExecutionID}" Width="120"/>
+                            <DataGridTextColumn Header="Scenario ID" Binding="{Binding ScenarioID}" Width="120"/>
+                            <DataGridTextColumn Header="Executed" Binding="{Binding LastExecuted}" Width="130"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding ExecutionStatus}" Width="120"/>
+                            <DataGridTextColumn Header="By" Binding="{Binding ExecutedBy}" Width="100"/>
+                            <DataGridTextColumn Header="Steps Passed" Binding="{Binding TestStepsPassed}" Width="110"/>
+                            <DataGridTextColumn Header="Total Steps" Binding="{Binding TotalTestSteps}" Width="110"/>
+                            <DataGridTemplateColumn Header="Logs" Width="100">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="View Logs" Style="{StaticResource ViewLogsButtonStyle}" Click="ViewLogs_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>
