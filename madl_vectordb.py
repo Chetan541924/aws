@@ -1,87 +1,87 @@
+
 # madl_vectordb.py
 from __future__ import annotations
-from typing import Dict, List
-from uuid import uuid4
+from typing import Dict, Any
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    VectorParams,
-    Distance,
-    PointStruct,
-)
+from madl_engine.azure_embeddings import generate_embedding
+from madl_engine.opensearch_client import get_os_client
 
-from madl_settings import (
-    QDRANT_HOST,
-    QDRANT_PORT,
-    QDRANT_USE_HTTPS,
-    QDRANT_API_KEY,
-    QDRANT_COLLECTION_NAME,
-    QDRANT_VECTOR_SIZE,
-    get_embedding_model,
-)
-
-# Initialize the embedding model and Qdrant client
-_embedding_model = get_embedding_model()
-
-_client = QdrantClient(
-    host=QDRANT_HOST,
-    port=QDRANT_PORT,
-    https=QDRANT_USE_HTTPS,
-    api_key=QDRANT_API_KEY,
-)
+INDEX_NAME = "madl_methods_v2"
 
 
-def ensure_collection_exists():
-    """Create Qdrant collection if missing."""
-    try:
-        _client.get_collection(QDRANT_COLLECTION_NAME)
-        return  # Exists already
-    except Exception:
-        pass
+INDEX_MAPPING = {
+    "mappings": {
+        "properties": {
+            "class_name": {"type": "keyword"},
+            "method_name": {"type": "keyword"},
+            "full_signature": {"type": "text"},
+            "method_code": {"type": "text"},
+            "intent": {"type": "text"},
+            "semantic_description": {"type": "text"},
+            "keywords": {"type": "keyword"},
+            "file_path": {"type": "keyword"},
+            "language": {"type": "keyword"},
+            "embedding": {
+                "type": "knn_vector",
+                "dimension": 1536,  # text-embedding-ada-002
+            },
+        }
+    },
+    "settings": {
+        "index": {
+            "knn": True
+        }
+    },
+}
 
-    _client.recreate_collection(
-        collection_name=QDRANT_COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=QDRANT_VECTOR_SIZE,
-            distance=Distance.COSINE,
-        ),
-    )
+
+def ensure_index():
+    client = get_os_client()
+    if not client.indices.exists(index=INDEX_NAME):
+        client.indices.create(index=INDEX_NAME, body=INDEX_MAPPING)
+        print(f"Created OpenSearch index: {INDEX_NAME}")
 
 
-def embed(text: str) -> List[float]:
-    """Compute embedding using SentenceTransformer."""
-    return _embedding_model.encode(text).tolist()
+def madl_to_opensearch_doc(madl: Dict[str, Any], extra_meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    intent = madl.get("intent", "")
+    sem_desc = madl.get("semantic_description", "")
+    text_for_embedding = sem_desc or intent
 
+    embedding = generate_embedding(text_for_embedding)
 
-def push_madl_to_qdrant(madl: Dict, extra: Dict | None = None):
-    """
-    Push MADL metadata into Qdrant.
-    """
-    ensure_collection_exists()
-
-    emb_text = madl["semantic_description"] or madl["intent"]
-    vector = embed(emb_text)
-
-    payload = {
-        "method_name": madl["method_name"],
+    doc = {
         "class_name": madl["class_name"],
-        "intent": madl["intent"],
-        "semantic_description": madl["semantic_description"],
-        "keywords": madl.get("keywords", []),
-        "parameters": madl["parameters"],
+        "method_name": madl["method_name"],
+        "full_signature": madl.get("parameters", ""),
         "method_code": madl["method_code"],
+        "intent": intent,
+        "semantic_description": sem_desc,
+        "keywords": madl.get("keywords", []),
+        "embedding": embedding,
     }
 
-    if extra:
-        payload.update(extra)
+    if extra_meta:
+        doc.update(extra_meta)
 
-    point = PointStruct(
-        id=uuid4().hex,
-        vector=vector,
-        payload=payload,
-    )
+    return doc
 
-    _client.upsert(
-        collection_name=QDRANT_COLLECTION_NAME,
-        points=[point],
+
+def push_madl_to_opensearch(madl: Dict[str, Any], extra_meta: Dict[str, Any] | None = None):
+    """
+    Index / update a single MADL method into OpenSearch.
+    """
+    ensure_index()
+    client = get_os_client()
+
+    doc = madl_to_opensearch_doc(madl, extra_meta)
+
+    # Use class+method as deterministic ID to avoid duplicates
+    doc_id = f"{doc['class_name']}.{doc['method_name']}"
+
+    client.index(
+        index=INDEX_NAME,
+        id=doc_id,
+        body=doc,
+        refresh=True,
     )
+    print(f"Indexed MADL method into OpenSearch: {doc_id}")
