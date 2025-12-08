@@ -1,4 +1,4 @@
-# madl_llm.py  (Azure OpenAI – JPM Certificate Auth Version)
+# madl_llm.py  (Azure OpenAI – API KEY VERSION)
 from __future__ import annotations
 import json
 import os
@@ -6,7 +6,9 @@ import logging
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
-from azure.identity import CertificateCredential
+# ❌ DO NOT IMPORT CertificateCredential
+# from azure.identity import CertificateCredential   <-- REMOVE THIS
+
 from openai import AzureOpenAI
 
 logging.basicConfig(level=logging.INFO)
@@ -14,17 +16,22 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-
-
+# -------------------------------
+# Azure OpenAI API KEY config
+# -------------------------------
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")   # KEEP as-is
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")  # name only
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_version=AZURE_OPENAI_API_VERSION,
-)
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 
+
+def get_fresh_client():
+    """Always return a clean API-key authenticated client."""
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        api_version=AZURE_OPENAI_API_VERSION,
+    )
 
 
 SYSTEM_PROMPT = """
@@ -57,7 +64,7 @@ If NOT reusable:
 
 
 # ------------------------
-# MAIN FUNCTION
+# MAIN LLM FUNCTION
 # ------------------------
 def generate_madl_for_method(method_code: str, class_name: str, parameters: str, language: str) -> Optional[Dict]:
 
@@ -72,12 +79,11 @@ Method code:
 {method_code}
 """.strip()
 
-    # 👉 IMPORTANT: Create a NEW Azure client for every call
     client = get_fresh_client()
 
     try:
         resp = client.chat.completions.create(
-            model=AZURE_OPENAI_DEPLOYMENT,   # ✔ use your .env deployment
+            model=AZURE_OPENAI_DEPLOYMENT,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -90,7 +96,6 @@ Method code:
         return None
 
     raw = resp.choices[0].message.content.strip()
-
     raw = raw.replace("```json", "").replace("```", "").strip()
 
     try:
@@ -116,5 +121,3 @@ Method code:
         "parameters": data.get("parameters", parameters).strip(),
         "method_code": data.get("method_code", method_code).strip(),
     }
-
-
