@@ -9,45 +9,47 @@ from dotenv import load_dotenv
 from azure.identity import CertificateCredential
 from openai import AzureOpenAI
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load ENV
 load_dotenv()
 
+# ------------------------
+# Load ENV VARIABLES
+# ------------------------
 TENANT_ID = os.getenv("AZURE_TENANT_ID")
 CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
 CERTIFICATE_PATH = os.getenv("CERTIFICATE_PATH")
-SCOPE = os.getenv("SCOPE")  # should be https://cognitiveservices.azure.com/.default
+SCOPE = os.getenv("SCOPE")
 
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")   # KEEP as-is
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
 
 if not (TENANT_ID and CLIENT_ID and CERTIFICATE_PATH and AZURE_OPENAI_ENDPOINT):
     raise RuntimeError("Missing Azure OpenAI certificate config in .env")
 
-# -------------------------------------------------------------
-# 1️⃣ Acquire Azure AD Token using CertificateCredential
-# -------------------------------------------------------------
+# ------------------------
+# CERTIFICATE LOGIN
+# ------------------------
 credential = CertificateCredential(
     tenant_id=TENANT_ID,
     client_id=CLIENT_ID,
     certificate_path=CERTIFICATE_PATH
 )
 
-token = credential.get_token(SCOPE).token
+def get_fresh_client():
+    """
+    JPM Azure OpenAI requires a NEW AAD token for each request.
+    """
+    token = credential.get_token(SCOPE).token
 
+    return AzureOpenAI(
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        azure_ad_token=token,
+        api_version=AZURE_OPENAI_API_VERSION,
+    )
 
-# -------------------------------------------------------------
-# 2️⃣ Initialize Azure OpenAI client
-# -------------------------------------------------------------
-client = AzureOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_ad_token=token,
-    api_version=AZURE_OPENAI_API_VERSION,
-)
 
 SYSTEM_PROMPT = """
 You analyze code and determine whether a method is a reusable automation method.
@@ -78,9 +80,9 @@ If NOT reusable:
 """.strip()
 
 
-# -------------------------------------------------------------
-# 3️⃣ Main MADL generation function
-# -------------------------------------------------------------
+# ------------------------
+# MAIN FUNCTION
+# ------------------------
 def generate_madl_for_method(method_code: str, class_name: str, parameters: str, language: str) -> Optional[Dict]:
 
     user_prompt = f"""
@@ -94,9 +96,12 @@ Method code:
 {method_code}
 """.strip()
 
+    # 👉 IMPORTANT: Create a NEW Azure client for every call
+    client = get_fresh_client()
+
     try:
         resp = client.chat.completions.create(
-            model=AZURE_OPENAI_DEPLOYMENT,
+            model=AZURE_OPENAI_DEPLOYMENT,   # ✔ use your .env deployment
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -110,7 +115,6 @@ Method code:
 
     raw = resp.choices[0].message.content.strip()
 
-    # strip markdown fences
     raw = raw.replace("```json", "").replace("```", "").strip()
 
     try:
@@ -122,7 +126,6 @@ Method code:
     if not isinstance(data, dict) or not data.get("reusable"):
         return None
 
-    # Normalize keywords list
     keywords = data.get("keywords", [])
     if not isinstance(keywords, list):
         keywords = []
