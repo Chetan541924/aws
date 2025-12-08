@@ -25,30 +25,12 @@ SCOPE = os.getenv("SCOPE")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")   # KEEP as-is
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-
-if not (TENANT_ID and CLIENT_ID and CERTIFICATE_PATH and AZURE_OPENAI_ENDPOINT):
-    raise RuntimeError("Missing Azure OpenAI certificate config in .env")
-
-# ------------------------
-# CERTIFICATE LOGIN
-# ------------------------
-credential = CertificateCredential(
-    tenant_id=TENANT_ID,
-    client_id=CLIENT_ID,
-    certificate_path=CERTIFICATE_PATH
+client = AzureOpenAI(
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_version=AZURE_OPENAI_API_VERSION,
 )
 
-def get_fresh_client():
-    """
-    JPM Azure OpenAI requires a NEW AAD token for each request.
-    """
-    token = credential.get_token(SCOPE).token
-
-    return AzureOpenAI(
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        azure_ad_token=token,
-        api_version=AZURE_OPENAI_API_VERSION,
-    )
 
 
 SYSTEM_PROMPT = """
@@ -140,3 +122,4 @@ Method code:
         "parameters": data.get("parameters", parameters).strip(),
         "method_code": data.get("method_code", method_code).strip(),
     }
+
