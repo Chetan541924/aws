@@ -14,13 +14,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# ------------------------
-# Load ENV VARIABLES
-# ------------------------
-TENANT_ID = os.getenv("AZURE_TENANT_ID")
-CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-CERTIFICATE_PATH = os.getenv("CERTIFICATE_PATH")
-SCOPE = os.getenv("SCOPE")
+
 
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")   # KEEP as-is
@@ -122,4 +116,5 @@ Method code:
         "parameters": data.get("parameters", parameters).strip(),
         "method_code": data.get("method_code", method_code).strip(),
     }
+
 
