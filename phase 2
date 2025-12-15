@@ -1,0 +1,47 @@
+def classify_step(step_name: str) -> str:
+    step_lower = step_name.lower()
+
+    if step_lower.startswith("given"):
+        return "STATE"
+    if step_lower.startswith("when"):
+        return "ACTION"
+    if step_lower.startswith("then"):
+        return "ASSERT"
+
+    return "UNKNOWN"
+
+
+
+
+
+for step_name, step_args in steps:
+
+    step_category = classify_step(step_name)
+
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": f"PHASE 2: Step -> {step_name} | Category -> {step_category}"
+    }))
+
+    try:
+        # DOM observation (already present)
+        frame_snapshot = [frame.url for frame in page.frames]
+
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[PHASE 2][DOM] Frames: {frame_snapshot}"
+        )
+
+        await websocket.send_text(json.dumps({
+            "status": "RUNNING",
+            "log": f"[PHASE 2] DOM observed for {step_category} step"
+        }))
+
+    except Exception as e:
+        ...
+
+
+
+
+
+
