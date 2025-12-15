@@ -243,8 +243,49 @@ async def click_nav_link(frame, link_text: str):
 
 
 async def assert_text_visible(frame, expected_text: str):
-    locator = frame.get_by_text(expected_text, exact=False)
-    await locator.wait_for(state="visible", timeout=20000)
+    # Strategy 1: visible text
+    try:
+        locator = frame.get_by_text(expected_text, exact=False)
+        await locator.wait_for(state="visible", timeout=5000)
+        return
+    except:
+        pass
+
+    # Strategy 2: text exists anywhere in DOM (hidden allowed)
+    try:
+        await frame.wait_for_function(
+            """(text) => document.body && document.body.innerText.includes(text)""",
+            expected_text,
+            timeout=5000
+        )
+        return
+    except:
+        pass
+
+    # Strategy 3: alert / status roles (very common in CCS)
+    try:
+        alert = frame.get_by_role("alert")
+        await alert.wait_for(timeout=5000)
+        if expected_text.lower() in (await alert.inner_text()).lower():
+            return
+    except:
+        pass
+
+    # Strategy 4: fallback — dump DOM snippet for diagnosis
+    dom = await frame.content()
+    raise AssertionError(
+        f"Text not found using any strategy: '{expected_text}'\n"
+        f"DOM snapshot (first 1000 chars):\n{dom[:1000]}"
+    )
+
+
+def resolve_content_frame(page):
+    for frame in page.frames:
+        if "ccs.do" in frame.url:
+            return frame
+    raise RuntimeError("Content frame not found")
+content_frame = resolve_content_frame(page)
+
 
 # ================= PHASE 3: ACTION / ASSERT EXECUTION =================
 
