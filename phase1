@@ -1,0 +1,49 @@
+from playwright.async_api import async_playwright
+
+await websocket.send_text(json.dumps({
+    "status": "EXECUTING",
+    "log": "Starting browser session..."
+}))
+
+async with async_playwright() as p:
+    browser = await p.chromium.launch(
+        headless=False,
+        executable_path=os.environ.get("exe_path")
+    )
+
+    context = await browser.new_context()
+    page = await context.new_page()
+
+    logger.info(LogCategory.EXECUTION, "Browser launched")
+
+
+
+
+
+# TEMPORARY — just navigate to home page
+await page.goto("YOUR_LOGIN_URL")
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "Navigated to application home"
+}))
+
+
+
+
+
+
+
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "Discovering frames..."
+}))
+
+for frame in page.frames:
+    logger.info(LogCategory.EXECUTION, f"FRAME URL: {frame.url}")
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": f"FRAME URL: {frame.url}"
+    }))
+
+
+
