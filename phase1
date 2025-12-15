@@ -93,6 +93,47 @@ async with async_playwright() as p:
     execution_message = "Authentication completed and CCS UI loaded successfully"
     final_status = "success"
 
+    # ---------------- PHASE 1.5: IDENTIFY FRAME ROLES ----------------
+nav_frame = None
+content_frame = None
+
+for frame in page.frames:
+    if "currentNavPosition.do" in frame.url:
+        nav_frame = frame
+    elif "ccs.do" in frame.url:
+        content_frame = frame
+
+if not nav_frame or not content_frame:
+    raise RuntimeError("PHASE 1.5 FAILED: Required CCS frames not found")
+
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "PHASE 1.5: Navigation and Content frames identified"
+}))
+
+# ---------------- PHASE 1.5 PROBE: CLICK CLAIMS ----------------
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "PHASE 1.5 probe: Clicking 'Claims' to validate frame scoping"
+}))
+
+claims_locator = nav_frame.locator("text=Claims")
+
+await claims_locator.wait_for(timeout=30000)
+await claims_locator.click()
+
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "PHASE 1.5 probe successful: 'Claims' clicked"
+}))
+
+# ---------------- VERIFY CONTENT FRAME STILL ACTIVE ----------------
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": "PHASE 1.5: Verifying content frame after probe click"
+}))
+
+
     await browser.close()
 
 await websocket.send_text(json.dumps({
