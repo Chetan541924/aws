@@ -21,7 +21,7 @@ async with async_playwright() as p:
 
     logger.info(LogCategory.EXECUTION, "Browser launched")
 
-    # ---------------- TEMPORARY: NAVIGATE ONLY (PHASE 1) ----------------
+    # ---------------- NAVIGATE TO APP ----------------
     await page.goto("YOUR_LOGIN_URL")
 
     await websocket.send_text(json.dumps({
@@ -29,10 +29,57 @@ async with async_playwright() as p:
         "log": "Navigated to application home"
     }))
 
-    # ---------------- FRAME DISCOVERY ----------------
+    # ---------------- ADFS AUTOMATED LOGIN ----------------
     await websocket.send_text(json.dumps({
         "status": "RUNNING",
-        "log": "Discovering frames..."
+        "log": "ADFS login page detected. Performing automated login..."
+    }))
+
+    await page.wait_for_selector('input[placeholder="Standard ID"]', timeout=60000)
+
+    await page.fill(
+        'input[placeholder="Standard ID"]',
+        os.environ["CCS_USERNAME"]
+    )
+
+    await page.fill(
+        'input[placeholder="Password"]',
+        os.environ["CCS_PASSWORD"]
+    )
+
+    await page.click('button:has-text("Sign in")')
+
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": "Credentials submitted. Waiting for authentication redirect..."
+    }))
+
+    # Wait until redirected away from ADFS
+    await page.wait_for_function("""
+        () => !window.location.href.includes('/adfs/')
+    """, timeout=120000)
+
+    # ---------------- WAIT FOR CCS UI FRAME ----------------
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": "Waiting for CCS UI frame to load..."
+    }))
+
+    await page.wait_for_function("""
+        () => Array.from(window.frames).some(f =>
+            f.location.href.includes('/ccs/')
+        )
+    """, timeout=120000)
+
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": "CCS UI frame detected"
+    }))
+
+    # ---------------- DISCOVER CCS FRAMES ----------------
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": "Discovering CCS frames..."
     }))
 
     for frame in page.frames:
@@ -42,9 +89,9 @@ async with async_playwright() as p:
             "log": f"FRAME URL: {frame.url}"
         }))
 
-    # PHASE 1 SUCCESS
+    # ---------------- PHASE 1 COMPLETE ----------------
+    execution_message = "Authentication completed and CCS UI loaded successfully"
     final_status = "success"
-    execution_message = "Browser launched and frames discovered successfully"
 
     await browser.close()
 
