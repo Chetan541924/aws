@@ -17,3 +17,15 @@ NAVIGATION RULES:
     - wait using page.wait_for_load_state("networkidle")
       OR wait for the next required selector using resolve_context.
 - Do NOT use time.sleep() except where explicitly instructed.
+
+SELECTOR RULES (MANDATORY):
+
+- DO NOT use XPath with contains(text()).
+- DO NOT assume elements are <a> tags.
+- Prefer Playwright accessibility selectors:
+    get_by_role("link", name="...")
+    get_by_role("button", name="...")
+    get_by_role("menuitem", name="...")
+- If text-based selection is required, use:
+    get_by_role or get_by_text (exact match).
+- Only use XPath if no role-based selector is possible.
