@@ -127,11 +127,68 @@ await websocket.send_text(json.dumps({
     "log": "PHASE 1.5 probe successful: 'Claims' clicked"
 }))
 
-# ---------------- VERIFY CONTENT FRAME STILL ACTIVE ----------------
+# ================= PHASE 2: STEP-WISE EXECUTION =================
+
 await websocket.send_text(json.dumps({
     "status": "RUNNING",
-    "log": "PHASE 1.5: Verifying content frame after probe click"
+    "log": "PHASE 2: Starting step-wise execution"
 }))
+
+# --- Filter ONLY Actual Test Case steps ---
+steps = [
+    (step_name, step_args)
+    for step_name, step_args in testplan_dict["current_bdd_steps"].items()
+    if testplan_dict["step_types"].get(step_name) == "Actual Test Case"
+]
+
+if not steps:
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": "PHASE 2: No Actual Test Case steps found. Skipping execution."
+    }))
+else:
+    for step_name, step_args in steps:
+
+        await websocket.send_text(json.dumps({
+            "status": "RUNNING",
+            "log": f"PHASE 2: Executing step -> {step_name}"
+        }))
+
+        try:
+            # ---------------- DOM OBSERVATION ----------------
+            frame_snapshot = []
+
+            for frame in page.frames:
+                frame_snapshot.append(frame.url)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 2][DOM] Visible frames: {frame_snapshot}"
+            )
+
+            await websocket.send_text(json.dumps({
+                "status": "RUNNING",
+                "log": f"[PHASE 2] DOM observed for step: {step_name}"
+            }))
+
+            # ---------------- NO ACTION YET ----------------
+            # Phase 3 will decide:
+            # - which frame
+            # - what selector
+            # - what action
+
+        except Exception as e:
+            logger.error(
+                LogCategory.EXECUTION,
+                f"[PHASE 2] Step failed: {step_name} | {str(e)}"
+            )
+
+            await websocket.send_text(json.dumps({
+                "status": "FAILED",
+                "log": f"PHASE 2: Step '{step_name}' failed due to {str(e)}"
+            }))
+            raise
+
 
 
     await browser.close()
