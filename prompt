@@ -1,0 +1,19 @@
+CRITICAL IFRAME EXECUTION RULES (MANDATORY):
+
+- The application may use nested, dynamic, or changing iframes.
+- NEVER directly interact with page using:
+    page.click(), page.fill(), page.press(), page.locator(), page.get_by*().
+- For EVERY user interaction:
+    ctx = resolve_context(page, "<selector>")
+    ctx.click / ctx.fill / ctx.press must be used.
+- resolve_context(page, selector) will be provided at runtime.
+- Do NOT cache frame references.
+- Do NOT use page.frames[index].
+- Iframes may change after navigation; always resolve context again per step.
+
+NAVIGATION RULES:
+
+- If an action causes navigation or page change:
+    - wait using page.wait_for_load_state("networkidle")
+      OR wait for the next required selector using resolve_context.
+- Do NOT use time.sleep() except where explicitly instructed.
