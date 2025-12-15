@@ -214,13 +214,33 @@ else:
             raise
 
 async def click_nav_link(frame, link_text: str):
-    locator = frame.get_by_role(
-        "link",
-        name=link_text,
-        exact=False
-    )
-    await locator.wait_for(state="visible", timeout=20000)
+    # Strategy 1: ARIA role
+    try:
+        locator = frame.get_by_role(
+            "link",
+            name=link_text,
+            exact=False
+        )
+        await locator.wait_for(state="visible", timeout=5000)
+        await locator.click()
+        return
+    except Exception:
+        pass
+
+    # Strategy 2: Text inside anchor/span
+    try:
+        locator = frame.locator("a").filter(has_text=link_text)
+        await locator.first.wait_for(state="visible", timeout=5000)
+        await locator.first.click()
+        return
+    except Exception:
+        pass
+
+    # Strategy 3: Last-resort text search
+    locator = frame.get_by_text(link_text, exact=False)
+    await locator.wait_for(state="visible", timeout=5000)
     await locator.click()
+
 
 async def assert_text_visible(frame, expected_text: str):
     locator = frame.get_by_text(expected_text, exact=False)
