@@ -1,0 +1,34 @@
+step_lower = step_name.lower()
+
+if "click on the link" in step_lower:
+    action_type = "NAV_CLICK"
+elif "clicks the button" in step_lower:
+    action_type = "BUTTON_CLICK"
+elif "enters" in step_lower:
+    action_type = "INPUT"
+elif "selects" in step_lower:
+    action_type = "SELECT"
+else:
+    raise RuntimeError("Unsupported ACTION step")
+
+
+elif action_type == "BUTTON_CLICK":
+    button_name = step_name.split("=")[-1].strip()
+    button = content_frame.get_by_role("button", name=button_name, exact=True)
+    await button.wait_for(state="visible", timeout=20000)
+    await button.click()
+
+
+elif action_type == "INPUT":
+    value = step_name.split("'")[1]
+    field_name = step_name.split("'")[-2]
+
+    input_box = content_frame.get_by_label(field_name)
+    await input_box.wait_for(state="visible", timeout=20000)
+    await input_box.fill(value)
+
+
+elif action_type == "SELECT":
+    option = step_args[0]  # from test data
+    dropdown = content_frame.get_by_role("combobox")
+    await dropdown.select_option(label=option)
