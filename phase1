@@ -214,6 +214,70 @@ else:
             raise
 
 
+# ================= PHASE 3: ACTION / ASSERT EXECUTION =================
+
+if step_category == "ACTION":
+
+    if "click" in step_name.lower():
+
+        # extract link name from step
+        # example: "... name = Agents"
+        if "=" not in step_name:
+            raise RuntimeError("ACTION step missing target name")
+
+        target = step_name.split("=")[-1].strip()
+
+        await websocket.send_text(json.dumps({
+            "status": "RUNNING",
+            "log": f"[PHASE 3] Clicking navigation link: {target}"
+        }))
+
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[PHASE 3] ACTION click on nav link: {target}"
+        )
+
+        await click_nav_link(nav_frame, target)
+
+        await websocket.send_text(json.dumps({
+            "status": "RUNNING",
+            "log": f"[PHASE 3] Click successful: {target}"
+        }))
+
+
+elif step_category == "ASSERT":
+
+    if "'" not in step_name:
+        raise RuntimeError("ASSERT step missing quoted text")
+
+    expected_text = step_name.split("'")[1]
+
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": f"[PHASE 3] Asserting text visible: {expected_text}"
+    }))
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] ASSERT text visible: {expected_text}"
+    )
+
+    await assert_text_visible(content_frame, expected_text)
+
+    await websocket.send_text(json.dumps({
+        "status": "RUNNING",
+        "log": f"[PHASE 3] Assertion passed: {expected_text}"
+    }))
+
+
+else:
+    # STATE steps require no action
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] STATE step acknowledged: {step_name}"
+    )
+
+
 
 
     await browser.close()
