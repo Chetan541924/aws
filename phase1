@@ -134,48 +134,72 @@ await websocket.send_text(json.dumps({
     "log": "PHASE 2: Starting step-wise execution"
 }))
 
-# --- Filter ONLY Actual Test Case steps ---
-steps = [
-    (step_name, step_args)
-    for step_name, step_args in testplan_dict["current_bdd_steps"].items()
-    if testplan_dict["step_types"].get(step_name) == "Actual Test Case"
-]
+logger.info(LogCategory.EXECUTION, "PHASE 2: Starting step-wise execution")
+
+# ----------------------------------------------------------------
+# Phase 2 runs ONLY current test case steps
+# Prerequisites are already handled in Phase 1
+# ----------------------------------------------------------------
+
+steps = list(testplan_dict["current_bdd_steps"].items())
 
 if not steps:
     await websocket.send_text(json.dumps({
         "status": "RUNNING",
-        "log": "PHASE 2: No Actual Test Case steps found. Skipping execution."
+        "log": "PHASE 2: No steps found in current test case"
     }))
 else:
     for step_name, step_args in steps:
 
+        step_category = classify_step(step_name)  # STATE / ACTION / ASSERT
+
         await websocket.send_text(json.dumps({
             "status": "RUNNING",
-            "log": f"PHASE 2: Executing step -> {step_name}"
+            "log": f"PHASE 2: Step -> {step_name} | Category -> {step_category}"
         }))
+
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[PHASE 2] Step: {step_name} | Category: {step_category}"
+        )
 
         try:
             # ---------------- DOM OBSERVATION ----------------
-            frame_snapshot = []
-
-            for frame in page.frames:
-                frame_snapshot.append(frame.url)
+            frame_snapshot = [frame.url for frame in page.frames]
 
             logger.info(
                 LogCategory.EXECUTION,
-                f"[PHASE 2][DOM] Visible frames: {frame_snapshot}"
+                f"[PHASE 2][DOM] Frames: {frame_snapshot}"
             )
 
             await websocket.send_text(json.dumps({
                 "status": "RUNNING",
-                "log": f"[PHASE 2] DOM observed for step: {step_name}"
+                "log": f"[PHASE 2] DOM observed for {step_category} step"
             }))
 
+            # ---------------- FRAME RESOLUTION ----------------
+            nav_frame = None
+            content_frame = None
+
+            for frame in page.frames:
+                if "currentNavPosition.do" in frame.url:
+                    nav_frame = frame
+                elif "ccs.do" in frame.url:
+                    content_frame = frame
+
+            if not nav_frame or not content_frame:
+                raise RuntimeError("Required CCS frames not found")
+
+            logger.info(
+                LogCategory.EXECUTION,
+                "[PHASE 2] CCS frames resolved successfully"
+            )
+
             # ---------------- NO ACTION YET ----------------
-            # Phase 3 will decide:
-            # - which frame
-            # - what selector
-            # - what action
+            # Phase 3 will:
+            # - choose correct frame
+            # - resolve selector
+            # - execute action/assert
 
         except Exception as e:
             logger.error(
@@ -188,6 +212,7 @@ else:
                 "log": f"PHASE 2: Step '{step_name}' failed due to {str(e)}"
             }))
             raise
+
 
 
 
