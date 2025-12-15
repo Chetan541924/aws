@@ -29,6 +29,20 @@ elif action_type == "INPUT":
 
 
 elif action_type == "SELECT":
-    option = step_args[0]  # from test data
-    dropdown = content_frame.get_by_role("combobox")
-    await dropdown.select_option(label=option)
+    option_text = step_name.split("'")[1]
+
+    # 1. Try native <select>
+    select_elements = content_frame.locator("select")
+    if await select_elements.count() > 0:
+        select = select_elements.first
+        await select.select_option(label=option_text)
+        return
+
+    # 2. Try clickable text-based dropdown (legacy CCS)
+    option = content_frame.locator(f"text={option_text}")
+    await option.wait_for(state="visible", timeout=20000)
+    await option.click()
+    return
+
+    raise RuntimeError(f"Unable to locate dropdown option: {option_text}")
+
