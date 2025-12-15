@@ -88,6 +88,50 @@ async def assert_text_visible(frame, expected_text: str):
 
 
 
+async def assert_agent_banner_message(content_frame, expected_text: str):
+    # Look for the Agent Summary banner row
+    banner = content_frame.locator(
+        "text=/Agent Summary/i"
+    )
+
+    await banner.wait_for(state="visible", timeout=20000)
+
+    banner_text = await banner.inner_text()
+
+    if expected_text.lower() not in banner_text.lower():
+        raise RuntimeError(
+            f"Expected banner text not found.\n"
+            f"Expected: {expected_text}\n"
+            f"Actual: {banner_text}"
+        )
+
+
+
+
+
+
+expected_text = "You are not logged into an Agent server"
+
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": f"[PHASE 3] ASSERT agent banner contains: {expected_text}"
+}))
+
+await assert_agent_banner_message(content_frame, expected_text)
+
+await websocket.send_text(json.dumps({
+    "status": "RUNNING",
+    "log": f"[PHASE 3] Assertion passed: {expected_text}"
+}))
+
+
+
+logger.info(
+    LogCategory.EXECUTION,
+    f"[PHASE 3] Agent banner text: {banner_text}"
+)
+
+
 
 
 
