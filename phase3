@@ -11,12 +11,47 @@ elif "selects" in step_lower:
 else:
     raise RuntimeError("Unsupported ACTION step")
 
+elif action_type == "BUTTON":
+    if "name =" not in step_name:
+        raise RuntimeError("BUTTON step missing button name")
 
-elif action_type == "BUTTON_CLICK":
-    button_name = step_name.split("=")[-1].strip()
-    button = content_frame.get_by_role("button", name=button_name, exact=True)
-    await button.wait_for(state="visible", timeout=20000)
-    await button.click()
+    button_name = step_name.split("name =")[-1].strip().lower()
+
+    # ALWAYS resolve frames at action time
+    nav_frame, content_frame = resolve_ccs_frames(page)
+
+    # CCS buttons are input[type=button|submit]
+    buttons = content_frame.locator(
+        "input[type='button'], input[type='submit'], button"
+    )
+
+    count = await buttons.count()
+    if count == 0:
+        raise RuntimeError("No buttons found on page")
+
+    for i in range(count):
+        btn = buttons.nth(i)
+
+        value_attr = (await btn.get_attribute("value") or "").lower()
+        id_attr = (await btn.get_attribute("id") or "").lower()
+        text_attr = (await btn.text_content() or "").lower()
+
+        if (
+            button_name in value_attr
+            or button_name in id_attr
+            or button_name in text_attr
+        ):
+            await btn.scroll_into_view_if_needed()
+            await btn.wait_for(state="visible", timeout=20000)
+            await btn.click(force=True)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] BUTTON click successful: {button_name}"
+            )
+            return
+
+    raise RuntimeError(f"Button '{button_name}' not found")
 
 
 elif action_type == "INPUT":
