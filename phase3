@@ -86,3 +86,28 @@ await click_nav_link(nav_frame, target)
 await page.wait_for_load_state("networkidle")
 content_frame = await refresh_content_frame(page)
 
+
+
+
+def resolve_ccs_frames(page):
+    nav_frame = None
+    content_frame = None
+
+    for frame in page.frames:
+        url = frame.url or ""
+
+        # Navigation frame: contains top tabs (Customer, Claims, etc.)
+        if "currentNavPosition" in url or "nav" in url:
+            nav_frame = frame
+
+        # Content frame: CCS business pages
+        elif "ccs/" in url and not "currentNavPosition" in url:
+            content_frame = frame
+
+    if not content_frame:
+        raise RuntimeError("CCS content frame not found")
+
+    # nav_frame may temporarily disappear during transitions
+    return nav_frame, content_frame
+
+
