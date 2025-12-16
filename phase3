@@ -20,12 +20,57 @@ elif action_type == "BUTTON_CLICK":
 
 
 elif action_type == "INPUT":
-    value = step_name.split("'")[1]
-    field_name = step_name.split("'")[-2]
+    if "'" not in step_name:
+        raise RuntimeError("INPUT step missing quoted value")
 
-    input_box = content_frame.get_by_label(field_name)
-    await input_box.wait_for(state="visible", timeout=20000)
-    await input_box.fill(value)
+    value = step_name.split("'")[1].strip()
+
+    # Resolve frames at ACTION time (CRITICAL)
+    nav_frame, content_frame = resolve_ccs_frames(page)
+
+    # 1. Find all visible text inputs
+    inputs = content_frame.locator("input[type='text']:visible")
+    count = await inputs.count()
+
+    if count == 0:
+        raise RuntimeError("No visible text input fields found")
+
+    # 2. Prefer inputs related to account / numeric search
+    preferred_keywords = [
+        "account",
+        "number",
+        "numeric",
+        "search"
+    ]
+
+    for i in range(count):
+        inp = inputs.nth(i)
+
+        id_attr = (await inp.get_attribute("id") or "").lower()
+        name_attr = (await inp.get_attribute("name") or "").lower()
+
+        if any(k in id_attr for k in preferred_keywords) or \
+           any(k in name_attr for k in preferred_keywords):
+
+            await inp.fill(value)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] INPUT successful (semantic match): {value}"
+            )
+            return
+
+    # 3. Fallback: fill the first visible input
+    await inputs.first.fill(value)
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] INPUT successful (fallback): {value}"
+    )
+    return
+
+
+
 
 elif action_type == "SELECT":
     if "'" not in step_name:
