@@ -27,12 +27,14 @@ elif action_type == "INPUT":
     await input_box.wait_for(state="visible", timeout=20000)
     await input_box.fill(value)
 
-
 elif action_type == "SELECT":
     if "'" not in step_name:
         raise RuntimeError("SELECT step missing quoted option")
 
     option_text = step_name.split("'")[1].strip()
+
+    # 🔴 ALWAYS re-resolve frames before interacting
+    nav_frame, content_frame = resolve_ccs_frames(page)
 
     select_elements = content_frame.locator("select")
     select_count = await select_elements.count()
@@ -44,18 +46,17 @@ elif action_type == "SELECT":
         select = select_elements.nth(i)
 
         try:
-            # Verify option exists in this select before selecting
             option = select.locator("option", has_text=option_text)
             if await option.count() == 0:
                 continue
 
+            await select.wait_for(state="visible", timeout=20000)
             await select.select_option(label=option_text)
 
             logger.info(
                 LogCategory.EXECUTION,
                 f"[PHASE 3] SELECT successful: {option_text}"
             )
-
             return
 
         except Exception:
@@ -64,6 +65,10 @@ elif action_type == "SELECT":
     raise RuntimeError(
         f"Option '{option_text}' not found in any <select> element"
     )
+
+
+
+
 
 
 async def refresh_content_frame(page):
