@@ -20,28 +20,27 @@ elif action_type == "BUTTON_CLICK":
 
 
 elif action_type == "INPUT":
-    if "'" not in step_name:
-        raise RuntimeError("INPUT step missing quoted value")
+    if "'" not in step_name or "name =" not in step_name:
+        raise RuntimeError("INPUT step must contain quoted value and field name")
 
+    # Extract value
     value = step_name.split("'")[1].strip()
 
-    # Resolve frames at ACTION time (CRITICAL)
+    # Extract logical field name
+    field_name = step_name.split("name =")[-1].strip().lower()
+
+    # ALWAYS resolve frames at action time
     nav_frame, content_frame = resolve_ccs_frames(page)
 
-    # 1. Find all visible text inputs
-    inputs = content_frame.locator("input[type='text']:visible")
+    # Get all visible text inputs
+    inputs = content_frame.locator("input[type='text']")
     count = await inputs.count()
 
     if count == 0:
-        raise RuntimeError("No visible text input fields found")
+        raise RuntimeError("No text input fields found on page")
 
-    # 2. Prefer inputs related to account / numeric search
-    preferred_keywords = [
-        "account",
-        "number",
-        "numeric",
-        "search"
-    ]
+    # Normalize field name for matching
+    normalized_field = field_name.replace(" ", "").lower()
 
     for i in range(count):
         inp = inputs.nth(i)
@@ -49,25 +48,21 @@ elif action_type == "INPUT":
         id_attr = (await inp.get_attribute("id") or "").lower()
         name_attr = (await inp.get_attribute("name") or "").lower()
 
-        if any(k in id_attr for k in preferred_keywords) or \
-           any(k in name_attr for k in preferred_keywords):
-
+        # Semantic match (THIS is the fix)
+        if normalized_field in id_attr or normalized_field in name_attr:
+            await inp.wait_for(state="visible", timeout=20000)
             await inp.fill(value)
 
             logger.info(
                 LogCategory.EXECUTION,
-                f"[PHASE 3] INPUT successful (semantic match): {value}"
+                f"[PHASE 3] INPUT successful: {field_name} = {value}"
             )
             return
 
-    # 3. Fallback: fill the first visible input
-    await inputs.first.fill(value)
-
-    logger.info(
-        LogCategory.EXECUTION,
-        f"[PHASE 3] INPUT successful (fallback): {value}"
+    # Hard failure (do NOT silently continue)
+    raise RuntimeError(
+        f"Input field matching '{field_name}' not found"
     )
-    return
 
 
 
