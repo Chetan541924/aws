@@ -66,3 +66,23 @@ elif action_type == "SELECT":
     )
 
 
+async def refresh_content_frame(page):
+    for _ in range(10):
+        for frame in page.frames:
+            if "ccs.do" in frame.url:
+                return frame
+        await asyncio.sleep(0.5)
+    raise RuntimeError("Unable to resolve CCS content frame after navigation")
+
+
+elif action_type == "SELECT":
+    content_frame = await refresh_content_frame(page)
+
+
+
+await click_nav_link(nav_frame, target)
+
+# ⬇⬇⬇ REQUIRED
+await page.wait_for_load_state("networkidle")
+content_frame = await refresh_content_frame(page)
+
