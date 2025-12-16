@@ -29,20 +29,40 @@ elif action_type == "INPUT":
 
 
 elif action_type == "SELECT":
-    option_text = step_name.split("'")[1]
+    if "'" not in step_name:
+        raise RuntimeError("SELECT step missing quoted option")
 
-    # 1. Try native <select>
+    option_text = step_name.split("'")[1].strip()
+
     select_elements = content_frame.locator("select")
-    if await select_elements.count() > 0:
-        select = select_elements.first
-        await select.select_option(label=option_text)
-        return
+    select_count = await select_elements.count()
 
-    # 2. Try clickable text-based dropdown (legacy CCS)
-    option = content_frame.locator(f"text={option_text}")
-    await option.wait_for(state="visible", timeout=20000)
-    await option.click()
-    return
+    if select_count == 0:
+        raise RuntimeError("No <select> elements found on page")
 
-    raise RuntimeError(f"Unable to locate dropdown option: {option_text}")
+    for i in range(select_count):
+        select = select_elements.nth(i)
+
+        try:
+            # Verify option exists in this select before selecting
+            option = select.locator("option", has_text=option_text)
+            if await option.count() == 0:
+                continue
+
+            await select.select_option(label=option_text)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] SELECT successful: {option_text}"
+            )
+
+            return
+
+        except Exception:
+            continue
+
+    raise RuntimeError(
+        f"Option '{option_text}' not found in any <select> element"
+    )
+
 
