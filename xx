@@ -21,7 +21,6 @@ elif action_type == "SELECT":
         step_name
         .split("selects", 1)[-1]
         .split("from", 1)[0]
-        .split("as", 1)[0]
         .strip()
         .strip("'\"")
         .lower()
@@ -29,27 +28,32 @@ elif action_type == "SELECT":
 
     nav_frame, content_frame = resolve_ccs_frames(page)
 
+    # 🔴 CCS-SPECIFIC: wait for customer context to finish loading
+    await page.wait_for_load_state("networkidle")
+    await content_frame.wait_for_timeout(2000)
+
     async def try_select(frame):
-        await frame.wait_for_selector("select", timeout=10000)
-        selects = frame.locator("select")
-        count = await selects.count()
+        # 🔴 TARGET THE REAL DROPDOWN
+        await frame.wait_for_selector(
+            "select[name='selectAndGo']",
+            timeout=15000
+        )
+
+        sel = frame.locator("select[name='selectAndGo']")
+        await sel.scroll_into_view_if_needed()
+        await sel.wait_for(state="visible", timeout=10000)
+
+        options = sel.locator("option")
+        count = await options.count()
 
         for i in range(count):
-            sel = selects.nth(i)
-            await sel.scroll_into_view_if_needed()
-            await sel.wait_for(state="visible", timeout=5000)
+            opt = options.nth(i)
+            text = (await opt.text_content() or "").lower()
+            value = (await opt.get_attribute("value") or "").lower()
 
-            options = sel.locator("option")
-            opt_count = await options.count()
-
-            for j in range(opt_count):
-                opt = options.nth(j)
-                text = (await opt.text_content() or "").lower()
-                value = (await opt.get_attribute("value") or "").lower()
-
-                if option_text in text or option_text in value:
-                    await sel.select_option(value=await opt.get_attribute("value"))
-                    return True
+            if option_text in text or option_text in value:
+                await sel.select_option(value=await opt.get_attribute("value"))
+                return True
 
         return False
 
@@ -57,7 +61,7 @@ elif action_type == "SELECT":
     if not await try_select(content_frame):
         if not await try_select(nav_frame):
             raise RuntimeError(
-                f"Option '{option_text}' not found in any <select> element"
+                f"Option '{option_text}' not found in Select An Action dropdown"
             )
 
     logger.info(
