@@ -23,34 +23,37 @@ elif action_type == "INPUT":
     if "'" not in step_name or "name =" not in step_name:
         raise RuntimeError("INPUT step must contain quoted value and field name")
 
-    # Extract value
+    # Extract value and logical field name
     value = step_name.split("'")[1].strip()
-
-    # Extract logical field name
     field_name = step_name.split("name =")[-1].strip().lower()
 
-    # ALWAYS resolve frames at action time
-    nav_frame, content_frame = resolve_ccs_frames(page)
+    # Always resolve frames at action time
+    _, content_frame = resolve_ccs_frames(page)
+
+    # Normalize field name for matching
+    normalized_field = field_name.replace(" ", "").replace("_", "")
 
     # Get all visible text inputs
     inputs = content_frame.locator("input[type='text']")
     count = await inputs.count()
 
     if count == 0:
-        raise RuntimeError("No text input fields found on page")
+        raise RuntimeError("No text input fields found")
 
-    # Normalize field name for matching
-    normalized_field = field_name.replace(" ", "").lower()
-
+    # ---------- PASS 1: STRONG semantic match ----------
     for i in range(count):
         inp = inputs.nth(i)
 
-        id_attr = (await inp.get_attribute("id") or "").lower()
-        name_attr = (await inp.get_attribute("name") or "").lower()
+        id_attr = (await inp.get_attribute("id") or "").lower().replace(" ", "")
+        name_attr = (await inp.get_attribute("name") or "").lower().replace(" ", "")
+        aria_attr = (await inp.get_attribute("aria-label") or "").lower().replace(" ", "")
 
-        # Semantic match (THIS is the fix)
-        if normalized_field in id_attr or normalized_field in name_attr:
-            await inp.wait_for(state="visible", timeout=20000)
+        if (
+            normalized_field in id_attr or
+            normalized_field in name_attr or
+            normalized_field in aria_attr
+        ):
+            await inp.click()
             await inp.fill(value)
 
             logger.info(
@@ -59,10 +62,29 @@ elif action_type == "INPUT":
             )
             return
 
-    # Hard failure (do NOT silently continue)
-    raise RuntimeError(
-        f"Input field matching '{field_name}' not found"
-    )
+    # ---------- PASS 2: Keyword-based semantic fallback ----------
+    keywords = normalized_field.split()
+
+    for i in range(count):
+        inp = inputs.nth(i)
+        combined = (
+            (await inp.get_attribute("id") or "") +
+            (await inp.get_attribute("name") or "") +
+            (await inp.get_attribute("aria-label") or "")
+        ).lower()
+
+        if any(k in combined for k in keywords):
+            await inp.click()
+            await inp.fill(value)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] INPUT fallback successful: {field_name} = {value}"
+            )
+            return
+
+    # ---------- HARD FAILURE ----------
+    raise RuntimeError(f"Input field matching '{field_name}' not found")
 
 
 
