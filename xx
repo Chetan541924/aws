@@ -11,3 +11,71 @@ When the user clicks the button with name = Go
 Then the Text 'Create a Claim' is visible
 
 Then the Text 'Reference Number: New Claim' is visible
+
+
+elif action_type == "SELECT":
+
+    if "selects" not in step_name or "dropdown" not in step_name:
+        raise RuntimeError("SELECT step format invalid")
+
+    option_text = (
+        step_name
+        .split("selects", 1)[-1]
+        .split("from", 1)[0]
+        .strip()
+        .strip("'\"")
+        .lower()
+    )
+
+    # ALWAYS resolve frames fresh
+    nav_frame, content_frame = resolve_ccs_frames(page)
+
+    # CCS dropdowns load late
+    await content_frame.wait_for_selector("select", timeout=20000)
+
+    selects = content_frame.locator("select")
+    select_count = await selects.count()
+
+    if select_count == 0:
+        raise RuntimeError("No <select> elements found on page")
+
+    selected = False
+
+    for i in range(select_count):
+        sel = selects.nth(i)
+
+        await sel.scroll_into_view_if_needed()
+        await sel.wait_for(state="visible", timeout=10000)
+
+        options = sel.locator("option")
+        opt_count = await options.count()
+
+        for j in range(opt_count):
+            opt = options.nth(j)
+
+            opt_text = (await opt.text_content() or "").lower()
+            opt_value = (await opt.get_attribute("value") or "").lower()
+
+            if option_text in opt_text or option_text in opt_value:
+                value = await opt.get_attribute("value")
+
+                await sel.select_option(value=value)
+
+                # CCS needs a short stabilization delay
+                await content_frame.wait_for_timeout(500)
+
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] SELECT successful: {option_text}"
+                )
+
+                selected = True
+                break
+
+        if selected:
+            break
+
+    if not selected:
+        raise RuntimeError(
+            f"Option '{option_text}' not found in any <select> element"
+        )
