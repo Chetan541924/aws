@@ -12,6 +12,7 @@ Then the Text 'Create a Claim' is visible
 
 Then the Text 'Reference Number: New Claim' is visible
 
+
 elif action_type == "SELECT":
 
     if "selects" not in step_name:
@@ -28,44 +29,77 @@ elif action_type == "SELECT":
 
     nav_frame, content_frame = resolve_ccs_frames(page)
 
-    # 🔴 CCS-SPECIFIC: wait for customer context to finish loading
     await page.wait_for_load_state("networkidle")
-    await content_frame.wait_for_timeout(2000)
 
-    async def try_select(frame):
-        # 🔴 TARGET THE REAL DROPDOWN
-        await frame.wait_for_selector(
-            "select[name='selectAndGo']",
-            timeout=15000
+    # ==========================================================
+    # CASE 1: CCS "Select An Action" dropdown (Create New Claim)
+    # ==========================================================
+    if "create a new claim" in option_text:
+        await content_frame.wait_for_timeout(2000)
+
+        async def try_action_select(frame):
+            sel = frame.locator("select[name='selectAndGo']")
+            if await sel.count() == 0:
+                return False
+
+            await sel.scroll_into_view_if_needed()
+            await sel.wait_for(state="visible", timeout=10000)
+
+            options = sel.locator("option")
+            count = await options.count()
+
+            for i in range(count):
+                opt = options.nth(i)
+                text = (await opt.text_content() or "").lower()
+                value = (await opt.get_attribute("value") or "").lower()
+
+                if option_text in text or option_text in value:
+                    await sel.select_option(value=await opt.get_attribute("value"))
+                    return True
+
+            return False
+
+        if not await try_action_select(content_frame):
+            if not await try_action_select(nav_frame):
+                raise RuntimeError(
+                    f"Option '{option_text}' not found in Select An Action dropdown"
+                )
+
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[PHASE 3] SELECT successful: {option_text}"
         )
+        return
 
-        sel = frame.locator("select[name='selectAndGo']")
+    # ==========================================================
+    # CASE 2: Generic SELECT (Account Number, etc.)
+    # ==========================================================
+    await content_frame.wait_for_selector("select", timeout=15000)
+
+    selects = content_frame.locator("select")
+    count = await selects.count()
+
+    for i in range(count):
+        sel = selects.nth(i)
         await sel.scroll_into_view_if_needed()
         await sel.wait_for(state="visible", timeout=10000)
 
         options = sel.locator("option")
-        count = await options.count()
+        opt_count = await options.count()
 
-        for i in range(count):
-            opt = options.nth(i)
+        for j in range(opt_count):
+            opt = options.nth(j)
             text = (await opt.text_content() or "").lower()
             value = (await opt.get_attribute("value") or "").lower()
 
             if option_text in text or option_text in value:
                 await sel.select_option(value=await opt.get_attribute("value"))
-                return True
 
-        return False
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] SELECT successful: {option_text}"
+                )
+                return
 
-    # Try content frame first, then nav frame
-    if not await try_select(content_frame):
-        if not await try_select(nav_frame):
-            raise RuntimeError(
-                f"Option '{option_text}' not found in Select An Action dropdown"
-            )
-
-    logger.info(
-        LogCategory.EXECUTION,
-        f"[PHASE 3] SELECT successful: {option_text}"
-    )
+    raise RuntimeError(f"Option '{option_text}' not found in any <select>")
 
