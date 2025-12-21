@@ -134,7 +134,17 @@ elif action_type == "ACCOUNT_ROW_CLICK":
     # Hover to ensure visibility (safe, not required but good)
     await span.scroll_into_view_if_needed()
     await span.hover()
-    await span.click()
+    await content_frame.wait_for_timeout(300)
+    
+    box = await span.bounding_box()
+    if not box:
+        raise RuntimeError("Account number not interactable")
+    
+    await page.mouse.click(
+        box["x"] + box["width"] / 2,
+        box["y"] + box["height"] / 2
+    )
+
 
     logger.info(
         LogCategory.EXECUTION,
