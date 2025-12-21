@@ -111,8 +111,10 @@ elif action_type == "ACCOUNT_ROW_CLICK":
     nav_frame, content_frame = resolve_ccs_frames(page)
     await page.wait_for_load_state("networkidle")
 
-    # Find account number spans (hover-based CCS links)
-    account_spans = content_frame.locator("span[onmouseover][onmouseout]")
+    # Locate account number spans inside Customer Account List
+    account_spans = content_frame.locator(
+        "div:has-text('Customer Account List') span[onmouseover]"
+    )
 
     count = await account_spans.count()
     if count == 0:
@@ -120,31 +122,31 @@ elif action_type == "ACCOUNT_ROW_CLICK":
 
     step_lower = step_name.lower()
 
-    # CASE 1: first account
+    # Determine which row
     if "first" in step_lower:
         span = account_spans.nth(0)
-
-    # CASE 2: last account
     elif "last" in step_lower:
         span = account_spans.nth(count - 1)
-
     else:
-        raise RuntimeError("Account row click requires 'first' or 'last'")
+        raise RuntimeError(
+            "Account row click requires 'first' or 'last'"
+        )
 
-    # Hover to ensure visibility (safe, not required but good)
+    # CRITICAL SEQUENCE (this is what was missing)
     await span.scroll_into_view_if_needed()
     await span.hover()
-    await content_frame.wait_for_timeout(300)
-    
-    box = await span.bounding_box()
-    if not box:
-        raise RuntimeError("Account number not interactable")
-    
-    await page.mouse.click(
-        box["x"] + box["width"] / 2,
-        box["y"] + box["height"] / 2
-    )
+    await content_frame.wait_for_timeout(500)  # allow JS hover handler to fire
+    await span.click(force=True)
 
+    # Re-resolve frames after navigation
+    await page.wait_for_load_state("networkidle")
+    nav_frame, content_frame = resolve_ccs_frames(page)
+
+    # Confirm navigation actually happened
+    await content_frame.wait_for_selector(
+        "div:has-text('Account Display')",
+        timeout=20000
+    )
 
     logger.info(
         LogCategory.EXECUTION,
