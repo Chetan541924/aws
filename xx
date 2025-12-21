@@ -103,3 +103,67 @@ elif action_type == "SELECT":
 
     raise RuntimeError(f"Option '{option_text}' not found in any <select>")
 
+
+
+
+elif action_type == "ACCOUNT_ROW_CLICK":
+
+    nav_frame, content_frame = resolve_ccs_frames(page)
+
+    await page.wait_for_load_state("networkidle")
+
+    # Customer Account List rows (account numbers are spans with mouseover handlers)
+    account_spans = content_frame.locator(
+        "div:has-text('Customer Account List') span[onmouseover]"
+    )
+
+    count = await account_spans.count()
+    if count == 0:
+        raise RuntimeError("No account numbers found in Customer Account List")
+
+    step_lower = step_name.lower()
+
+    # --------------------------------------------------
+    # CASE 1: Click first account
+    # --------------------------------------------------
+    if "first account" in step_lower:
+        span = account_spans.nth(0)
+
+        await span.scroll_into_view_if_needed()
+        await span.hover()                 # 🔑 REQUIRED
+        await span.wait_for(state="visible", timeout=10000)
+        await span.click(force=True)
+
+        logger.info(
+            LogCategory.EXECUTION,
+            "[PHASE 3] Account row click successful: first account"
+        )
+        return
+
+    # --------------------------------------------------
+    # CASE 2: Click account ending / containing digits
+    # --------------------------------------------------
+    import re
+    match = re.search(r"ending with '(.+?)'|containing '(.+?)'", step_lower)
+    if not match:
+        raise RuntimeError("Account number selector missing digits")
+
+    target_digits = (match.group(1) or match.group(2)).lower()
+
+    for i in range(count):
+        span = account_spans.nth(i)
+        text = (await span.text_content() or "").lower()
+
+        if target_digits in text:
+            await span.scroll_into_view_if_needed()
+            await span.hover()             # 🔑 REQUIRED
+            await span.wait_for(state="visible", timeout=10000)
+            await span.click(force=True)
+
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] Account row click successful: {target_digits}"
+            )
+            return
+
+    raise RuntimeError(f"Account number '{target_digits}' not found")
