@@ -105,15 +105,19 @@ elif action_type == "SELECT":
 
 
 
-
 elif action_type == "ACCOUNT_ROW_CLICK":
 
     nav_frame, content_frame = resolve_ccs_frames(page)
-    await page.wait_for_load_state("networkidle")
 
-    # Locate account number spans inside Customer Account List
-    account_spans = content_frame.locator(
-        "div:has-text('Customer Account List') span[onmouseover]"
+    # VERY IMPORTANT: wait for customer account list to exist
+    account_list = content_frame.locator(
+        "div:has-text('Customer Account List')"
+    )
+    await account_list.wait_for(state="visible", timeout=15000)
+
+    # Only spans INSIDE Customer Account List
+    account_spans = account_list.locator(
+        "span[onmouseover][onmouseout]"
     )
 
     count = await account_spans.count()
@@ -122,27 +126,36 @@ elif action_type == "ACCOUNT_ROW_CLICK":
 
     step_lower = step_name.lower()
 
-    # Determine which row
     if "first" in step_lower:
         span = account_spans.nth(0)
     elif "last" in step_lower:
         span = account_spans.nth(count - 1)
     else:
-        raise RuntimeError(
-            "Account row click requires 'first' or 'last'"
-        )
+        raise RuntimeError("Account row click requires 'first' or 'last'")
 
-    # CRITICAL SEQUENCE (this is what was missing)
-    await span.scroll_into_view_if_needed()
-    await span.hover()
-    await content_frame.wait_for_timeout(500)  # allow JS hover handler to fire
-    await span.click(force=True)
+    # ---- CRITICAL PART ----
+    # REAL mouse interaction (not span.click())
+    box = await span.bounding_box()
+    if not box:
+        raise RuntimeError("Account span has no bounding box")
 
-    # Re-resolve frames after navigation
-    await page.wait_for_load_state("networkidle")
-    nav_frame, content_frame = resolve_ccs_frames(page)
+    # Move mouse INTO the element (triggers onmouseover)
+    await page.mouse.move(
+        box["x"] + box["width"] / 2,
+        box["y"] + box["height"] / 2
+    )
 
-    # Confirm navigation actually happened
+    await page.wait_for_timeout(300)  # allow hover JS to run
+
+    # Click using mouse (this triggers CCS JS navigation)
+    await page.mouse.click(
+        box["x"] + box["width"] / 2,
+        box["y"] + box["height"] / 2
+    )
+
+    # ---- WAIT FOR NAVIGATION ----
+    # CCS does NOT always trigger networkidle
+    # Wait for Account Display header instead
     await content_frame.wait_for_selector(
         "div:has-text('Account Display')",
         timeout=20000
@@ -152,3 +165,4 @@ elif action_type == "ACCOUNT_ROW_CLICK":
         LogCategory.EXECUTION,
         "[PHASE 3] ACCOUNT ROW CLICK successful"
     )
+
