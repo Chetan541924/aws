@@ -26,28 +26,41 @@ elif action_type == "CHECKBOX":
     matched = False
 
     for i in range(row_count):
-        row = rows.nth(i)
+    row = rows.nth(i)
 
-        row_text = (await row.text_content() or "").lower()
-        if txn_desc in row_text:
-            checkbox = row.locator("input[type='checkbox']")
+    row_text = (await row.text_content() or "").lower()
+    if txn_desc not in row_text:
+        continue
 
-            if await checkbox.count() != 1:
-                raise RuntimeError(
-                    f"Expected 1 checkbox in matched row, found {await checkbox.count()}"
-                )
+    # 🔹 Extract transaction index from onclick
+    onclick = await row.locator("input[type='checkbox']").first().get_attribute("onclick")
+    if not onclick:
+        raise RuntimeError("Checkbox onclick attribute not found")
 
-            await checkbox.scroll_into_view_if_needed()
-            await checkbox.wait_for(state="visible", timeout=10000)
-            await checkbox.check(force=True)
+    # Example: ...disableIfNoneChecked(this,'0763', 2,...
+    match = re.search(r",\s*(\d+)\s*,", onclick)
+    if not match:
+        raise RuntimeError("Transaction index not found in onclick")
 
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[PHASE 3] CHECKBOX selected for transaction: {txn_desc}"
-            )
+    txn_index = match.group(1)
 
-            matched = True
-            break
+    # 🔹 Build exact checkbox ID
+    checkbox = content_frame.locator(
+        f"input[id='customerPageForm.depositAccountTransactionsPanelData.transactions{txn_index}.selected1']"
+    )
+
+    await checkbox.scroll_into_view_if_needed()
+    await checkbox.wait_for(state="visible", timeout=10000)
+
+    if not await checkbox.is_checked():
+        await checkbox.check(force=True)
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] Checkbox selected for transaction index {txn_index}"
+    )
+    break
+
 
     if not matched:
         raise RuntimeError(
