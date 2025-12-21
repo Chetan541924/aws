@@ -1,119 +1,66 @@
-first_attempt = False
-execution_message = ""
+elif action_type == "BUTTON":
 
-await websocket.send_text(json.dumps({
-    "status": "EXECUTING",
-    "log": "Starting script execution..."
-}))
+    if "name =" not in step_name:
+        raise RuntimeError("BUTTON step missing button name")
 
-import subprocess
-import sys
-import asyncio
-import os
-from datetime import datetime
+    button_name = step_name.split("name =")[-1].strip().lower()
+    step_lower = step_name.lower()
 
-execution_logs = []
+    nav_frame, content_frame = resolve_ccs_frames(page)
 
-try:
-    # 1. Store script inside project directory
-    project_dir = os.getcwd()
-    scripts_dir = os.path.join(project_dir, "generated_scripts")
-    os.makedirs(scripts_dir, exist_ok=True)
+    # --------------------------------------------------
+    # SECTION-SCOPED BUTTON RESOLUTION
+    # --------------------------------------------------
 
-    script_filename = f"script_{testcase_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
-    script_path = os.path.join(scripts_dir, script_filename)
+    if "account activity" in step_lower:
+        buttons = content_frame.locator(
+            "div:has-text('Account Activity') "
+            "input[type='button'], "
+            "div:has-text('Account Activity') "
+            "input[type='submit'], "
+            "div:has-text('Account Activity') button"
+        )
 
-    with open(script_path, "w", encoding="utf-8") as f:
-        f.write(generated_script)
-
-    logger.info(LogCategory.EXECUTION, f"Executing script: {script_path}")
-
-    # 2. Execute script
-    process = subprocess.Popen(
-        [sys.executable, script_path],
-        cwd=project_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1
-    )
-
-    execution_output = ""
-
-    # 3. Stream logs live
-    for line in process.stdout:
-        line = line.rstrip("\n")
-        if not line.strip():
-            continue
-
-        execution_logs.append(line)
-        execution_output += line + "\n"
-
-        await websocket.send_text(json.dumps({
-            "status": "RUNNING",
-            "log": line
-        }))
-        await asyncio.sleep(0.02)
-
-    # 4. Completion
-    return_code = process.wait()
-
-    if return_code == 0:
-        first_attempt = True
-        execution_message = f"Script executed successfully. Stored at: {script_path}"
-
-        logger.success(LogCategory.EXECUTION, execution_message)
-        await websocket.send_text(json.dumps({
-            "status": "SUCCESS",
-            "log": execution_message
-        }))
+    elif "customer search" in step_lower:
+        buttons = content_frame.locator(
+            "div:has-text('Customer Search') "
+            "input[type='button'], "
+            "div:has-text('Customer Search') "
+            "input[type='submit'], "
+            "div:has-text('Customer Search') button"
+        )
 
     else:
-        execution_message = f"Script execution failed. Stored at: {script_path}"
+        # legacy fallback
+        buttons = content_frame.locator(
+            "input[type='button'], input[type='submit'], button"
+        )
 
-        logger.error(LogCategory.EXECUTION, execution_message)
-        await websocket.send_text(json.dumps({
-            "status": "FAILED",
-            "log": execution_message
-        }))
+    count = await buttons.count()
+    if count == 0:
+        raise RuntimeError("No buttons found in scoped section")
 
-except Exception as e:
-    execution_message = f"Execution error: {str(e)}"
+    clicked = False
 
-    logger.error(LogCategory.EXECUTION, execution_message)
-    await websocket.send_text(json.dumps({
-        "status": "FAILED",
-        "log": execution_message
-    }))
+    for i in range(count):
+        btn = buttons.nth(i)
 
-# --------------------------- FINAL STATUS ----------------------------
-if first_attempt:
-    final_status = "success"
-else:
-    final_status = "fail"
+        value_attr = (await btn.get_attribute("value") or "").lower()
+        id_attr = (await btn.get_attribute("id") or "").lower()
+        text_attr = (await btn.text_content() or "").lower()
 
-# ---------------------- STORE EXECUTION (SQLite) ---------------------
-exeid = await utils.get_next_exeid(conn)
+        if button_name in value_attr or button_name in id_attr or button_name in text_attr:
+            await btn.scroll_into_view_if_needed()
+            await btn.wait_for(state="visible", timeout=10000)
+            await btn.click()
 
-datestamp = datetime.now().date().isoformat()
-exetime = datetime.now().strftime("%H:%M:%S")
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] BUTTON click successful: {button_name}"
+            )
 
-await conn.execute(
-    """
-    INSERT INTO execution (exeid, testcaseid, scripttype, datestamp, exetime, message, output, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-    exeid, testcase_id, script_type, datestamp, exetime,
-    execution_message, execution_output, final_status
-)
-await conn.commit()
+            clicked = True
+            break
 
-# Final response
-await websocket.send_text(json.dumps({
-    "status": "COMPLETED",
-    "log": execution_message,
-    "final_status": final_status,
-    "summary": logger.get_summary()
-}))
+    if not clicked:
+        raise RuntimeError(f"Button '{button_name}' not found in specified section")
