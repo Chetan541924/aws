@@ -1,3 +1,7 @@
+(//div[@id='ACCOUNT_ACTIVITY_Div']//tr[contains(@class,'subPanelContent')])[1]//input[@type='checkbox' and not(@type='hidden')]
+
+
+
 elif action_type == "CHECKBOX":
 
     import re
