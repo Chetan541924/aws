@@ -49,3 +49,8 @@ elif action_type == "CHECKBOX":
         LogCategory.EXECUTION,
         f"[PHASE 3] Checkbox selected in Account Activity row {row_index + 1}"
     )
+
+
+print("TYPE OF checkbox:", type(checkbox))
+print("TYPE OF row:", type(row))
+print("TYPE OF content_frame:", type(content_frame))
