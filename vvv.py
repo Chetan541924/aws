@@ -1,94 +1,65 @@
 (//div[@id='ACCOUNT_ACTIVITY_Div']//tr[contains(@class,'subPanelContent')])[1]//input[@type='checkbox' and not(@type='hidden')]
 
-
-
 elif action_type == "CHECKBOX":
-
-    import re
 
     step_lower = step_name.lower()
 
-    # --------------------------------------------------
-    # Resolve CCS frames
-    # --------------------------------------------------
+    # -------------------------------
+    # Extract row number
+    # -------------------------------
+    match = re.search(r"row\s*(\d+)", step_lower)
+    if not match:
+        raise RuntimeError(
+            "CHECKBOX step must specify row number (e.g. 'row 1')"
+        )
+
+    index = int(match.group(1)) - 1  # zero-based index
+
+    # -------------------------------
+    # Resolve frames
+    # -------------------------------
     nav_frame, content_frame = resolve_ccs_frames(page)
 
-    # --------------------------------------------------
-    # Locate ONLY real transaction rows
-    # (Ignore headers, hidden rows, summary rows)
-    # --------------------------------------------------
-    rows = content_frame.locator(
-        "xpath=//div[@id='ACCOUNT_ACTIVITY_Div']"
-        "//tr[contains(@class,'subPanelContent')]"
+    # -------------------------------
+    # Locate ALL visible checkboxes
+    # -------------------------------
+    checkboxes = content_frame.locator(
+        "//div[@id='ACCOUNT_ACTIVITY_Div']"
+        "//input[@type='checkbox' and not(@type='hidden')]"
     )
 
-    row_count = await rows.count()
-    if row_count == 0:
-        raise RuntimeError("No transaction rows found in Account Activity")
+    count = await checkboxes.count()
 
-    checkbox_to_click = None
+    if count == 0:
+        raise RuntimeError("No checkboxes found in Account Activity")
 
-    # ==================================================
-    # CASE 1: ROW NUMBER (row 1 / row 2 / row N)
-    # ==================================================
-    row_match = re.search(r"row\s*(\d+)", step_lower)
-    if row_match:
-        row_index = int(row_match.group(1)) - 1
-
-        if row_index < 0 or row_index >= row_count:
-            raise RuntimeError(
-                f"Row {row_index + 1} out of range (total rows: {row_count})"
-            )
-
-        row = rows.nth(row_index)
-
-        checkbox_to_click = row.locator(
-            "input[type='checkbox']:not([type='hidden'])"
-        )
-
-    # ==================================================
-    # CASE 2: DESCRIPTION BASED
-    # Example:
-    # "checks the checkbox for transaction 'Zelle payment from Scott Snyder'"
-    # ==================================================
-    if checkbox_to_click is None:
-        desc_match = re.search(r"transaction\s+'(.+?)'", step_name, re.IGNORECASE)
-        if desc_match:
-            description_text = desc_match.group(1).strip()
-
-            for i in range(row_count):
-                row = rows.nth(i)
-                row_text = await row.inner_text()
-
-                if description_text.lower() in row_text.lower():
-                    checkbox_to_click = row.locator(
-                        "input[type='checkbox']:not([type='hidden'])"
-                    )
-                    break
-
-            if checkbox_to_click is None:
-                raise RuntimeError(
-                    f"Transaction with description '{description_text}' not found"
-                )
-
-    # ==================================================
-    # FINAL VALIDATION
-    # ==================================================
-    if checkbox_to_click is None:
+    if index < 0 or index >= count:
         raise RuntimeError(
-            "CHECKBOX step must specify either row number or transaction description"
+            f"Checkbox row {index+1} out of range. Total rows: {count}"
         )
 
-    # --------------------------------------------------
-    # Scroll + Wait + Check
-    # --------------------------------------------------
-    await checkbox_to_click.scroll_into_view_if_needed()
-    await checkbox_to_click.wait_for(state="attached", timeout=15000)
+    checkbox = checkboxes.nth(index)
 
-    if not await checkbox_to_click.is_checked():
-        await checkbox_to_click.check(force=True)
+    # -------------------------------
+    # Scroll + click
+    # -------------------------------
+    await checkbox.scroll_into_view_if_needed()
+    await checkbox.wait_for(state="visible", timeout=15000)
+
+    if not await checkbox.is_checked():
+        await checkbox.click(force=True)
+
+    # -------------------------------
+    # Post-action delay (visual verify)
+    # -------------------------------
+    await page.wait_for_timeout(5000)
 
     logger.info(
         LogCategory.EXECUTION,
-        "[PHASE 3] Checkbox selected in Account Activity"
+        f"[PHASE 3] Checkbox selected in Account Activity row {index+1}"
     )
+
+    # Pause AFTER click (visual verify)
+    # -------------------------------
+    await page.wait_for_timeout(5000)
+
