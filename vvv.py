@@ -9,23 +9,15 @@ elif action_type == "CHECKBOX":
 
     step_lower = step_name.lower()
 
-    # -------------------------------
-    # 1. Extract row number (1-based)
-    # -------------------------------
     match = re.search(r"row\s+(\d+)", step_lower)
     if not match:
         raise RuntimeError("CHECKBOX step must specify row number")
 
-    row_index = int(match.group(1)) - 1  # convert to 0-based
+    row_index = int(match.group(1)) - 1
 
-    # -------------------------------
-    # 2. Resolve frames
-    # -------------------------------
+    await page.wait_for_load_state("networkidle")
     nav_frame, content_frame = resolve_ccs_frames(page)
 
-    # -------------------------------
-    # 3. Locate Account Activity rows
-    # -------------------------------
     rows = content_frame.locator(
         "//div[@id='ACCOUNT_ACTIVITY_Div']//tr[td]"
     )
@@ -33,24 +25,20 @@ elif action_type == "CHECKBOX":
     row_count = await rows.count()
     if row_index >= row_count:
         raise RuntimeError(
-            f"Requested row {row_index + 1}, but only {row_count} rows exist"
+            f"Row index {row_index + 1} out of range (found {row_count} rows)"
         )
 
     row = rows.nth(row_index)
 
-    # -------------------------------
-    # 4. Locate EXACT checkbox in row
-    # -------------------------------
     checkbox = row.locator(
-        "td input[type='checkbox']:not([type='hidden'])"
+        "input[type='checkbox']:not([type='hidden'])"
     ).first()
 
     if await checkbox.count() == 0:
-        raise RuntimeError("Checkbox not found in selected row")
+        raise RuntimeError(
+            f"No checkbox found in Account Activity row {row_index + 1}"
+        )
 
-    # -------------------------------
-    # 5. Interact safely
-    # -------------------------------
     await checkbox.scroll_into_view_if_needed()
     await checkbox.wait_for(state="visible", timeout=10000)
 
