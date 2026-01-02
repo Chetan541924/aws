@@ -64,3 +64,95 @@ for step in step_execution_logs:
     )
 
 await conn.commit()
+
+
+
+step_counter += 1
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": "When the user launches the browser",
+    "step_type": "WHEN",
+    "action_type": "BROWSER_LAUNCH",
+    "status": "PASS",
+    "error_message": None,
+
+    "frame_type": "N/A",
+    "frame_url": None,
+
+    "locator_strategy": None,
+    "locator_value": None,
+
+    "resolved_element_tag": None,
+    "resolved_element_text": None,
+    "resolved_element_id": None,
+    "resolved_element_name": None,
+    "resolved_element_xpath": None,
+
+    "input_value": f"headless={False}",
+    "confidence": "HIGH",
+    "execution_ts": datetime.now().isoformat()
+})
+
+
+step_counter += 1
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": "When the user navigates to the CCS application",
+    "step_type": "WHEN",
+    "action_type": "NAVIGATE",
+    "status": "PASS",
+    "error_message": None,
+
+    "frame_type": "main",
+    "frame_url": page.url,
+
+    "locator_strategy": "url",
+    "locator_value": page.url,
+
+    "resolved_element_tag": "document",
+    "resolved_element_text": None,
+    "resolved_element_id": None,
+    "resolved_element_name": None,
+    "resolved_element_xpath": "/html",
+
+    "input_value": page.url,
+    "confidence": "HIGH",
+    "execution_ts": datetime.now().isoformat()
+})
+
+
+
+step_counter += 1
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": "When the user logs in using valid CCS credentials",
+    "step_type": "WHEN",
+    "action_type": "LOGIN",
+    "status": "PASS",
+    "error_message": None,
+
+    "frame_type": "main",
+    "frame_url": page.url,
+
+    "locator_strategy": "css",
+    "locator_value": (
+        "input[placeholder='Standard ID'], "
+        "input[placeholder='Password'], "
+        "button:has-text('Sign in')"
+    ),
+
+    "resolved_element_tag": "form",
+    "resolved_element_text": "ADFS Login Form",
+    "resolved_element_id": None,
+    "resolved_element_name": None,
+    "resolved_element_xpath": "//form",
+
+    "input_value": "USERNAME + PASSWORD (masked)",
+    "confidence": "HIGH",
+    "execution_ts": datetime.now().isoformat()
+})
+
+
