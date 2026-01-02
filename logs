@@ -1,0 +1,45 @@
+# ---------------- STEP EXECUTION LOG : NAV_CLICK ----------------
+
+step_counter += 1
+
+# Resolve runtime values safely
+frame_url = nav_frame.url if nav_frame else None
+
+resolved_id = await link.get_attribute("id")
+resolved_name = await link.get_attribute("name")
+resolved_text = await link.text_content()
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "NAV_CLICK",
+    "status": "PASS",
+    "error_message": None,
+
+    # Frame details (resolved, not hardcoded)
+    "frame_type": "navigation",
+    "frame_url": frame_url,
+
+    # Locator details (what ACTUALLY worked)
+    "locator_strategy": "role",
+    "locator_value": {
+        "role": "link",
+        "name": target
+    },
+
+    # Resolved element metadata
+    "resolved_element_tag": "a",
+    "resolved_element_text": resolved_text.strip() if resolved_text else None,
+    "resolved_element_id": resolved_id,
+    "resolved_element_name": resolved_name,
+    "resolved_element_xpath": None,   # role-based click → xpath intentionally absent
+
+    # Semantic input
+    "input_value": target,
+
+    # High confidence: role + visible name
+    "confidence": "HIGH",
+
+    "execution_ts": datetime.now().isoformat()
+})
