@@ -43,3 +43,57 @@ step_execution_logs.append({
 
     "execution_ts": datetime.now().isoformat()
 })
+
+
+# ---------------- STEP EXECUTION LOG : BUTTON ----------------
+
+step_counter += 1
+
+# Resolve runtime values
+frame_url = content_frame.url if content_frame else None
+
+resolved_id = await btn.get_attribute("id")
+resolved_name = await btn.get_attribute("name")
+resolved_text = await btn.text_content()
+resolved_value = await btn.get_attribute("value")
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "BUTTON",
+    "status": "PASS",
+    "error_message": None,
+
+    # Frame details (actual frame used)
+    "frame_type": "content",
+    "frame_url": frame_url,
+
+    # Locator strategy ACTUALLY used
+    # (semantic scan over button/value/text/id)
+    "locator_strategy": "semantic_scan",
+    "locator_value": {
+        "button_name": button_name,
+        "section": section,
+        "matched_on": {
+            "text": resolved_text,
+            "value": resolved_value,
+            "id": resolved_id
+        }
+    },
+
+    # Resolved element metadata
+    "resolved_element_tag": "button",
+    "resolved_element_text": resolved_text.strip() if resolved_text else None,
+    "resolved_element_id": resolved_id,
+    "resolved_element_name": resolved_name,
+    "resolved_element_xpath": None,   # intentionally omitted (semantic click)
+
+    # Semantic input
+    "input_value": button_name,
+
+    # Medium–High confidence (semantic, not role-based)
+    "confidence": "MEDIUM",
+
+    "execution_ts": datetime.now().isoformat()
+})
