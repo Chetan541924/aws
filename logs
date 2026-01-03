@@ -97,3 +97,57 @@ step_execution_logs.append({
 
     "execution_ts": datetime.now().isoformat()
 })
+
+
+
+
+# ---------------- STEP EXECUTION LOG : INPUT ----------------
+
+step_counter += 1
+
+frame_url = content_frame.url if content_frame else None
+
+resolved_id = await inp.get_attribute("id")
+resolved_name = await inp.get_attribute("name")
+resolved_aria = await inp.get_attribute("aria-label")
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "INPUT",
+    "status": "PASS",
+    "error_message": None,
+
+    # Frame details (resolved at action time)
+    "frame_type": "content",
+    "frame_url": frame_url,
+
+    # Locator strategy actually used
+    "locator_strategy": "semantic_input_match",
+    "locator_value": {
+        "field_name": field_name,
+        "normalized_field": normalized_field,
+        "resolution_mode": input_resolution_mode,  # strong | fallback
+        "matched_on": {
+            "id": resolved_id,
+            "name": resolved_name,
+            "aria-label": resolved_aria
+        }
+    },
+
+    # Resolved element metadata
+    "resolved_element_tag": "input",
+    "resolved_element_text": None,
+    "resolved_element_id": resolved_id,
+    "resolved_element_name": resolved_name,
+    "resolved_element_xpath": None,  # semantic match → xpath intentionally omitted
+
+    # Input semantics
+    "input_value": value,
+
+    # Confidence scoring
+    "confidence": "HIGH" if input_resolution_mode == "strong" else "MEDIUM",
+
+    "execution_ts": datetime.now().isoformat()
+})
