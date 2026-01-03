@@ -213,3 +213,76 @@ step_execution_logs.append({
 
     "execution_ts": datetime.now().isoformat()
 })
+
+
+
+
+
+
+
+account_resolution_mode = None   # index_word | numeric_index | masked_last4 | digit_match
+resolved_row_index = None
+resolved_href = None
+
+
+account_resolution_mode = "index_word"
+resolved_row_index = idx
+resolved_href = await link_to_click.get_attribute("href")
+
+account_resolution_mode = "numeric_index"
+resolved_row_index = idx
+resolved_href = await link_to_click.get_attribute("href")
+
+account_resolution_mode = "masked_last4"
+resolved_row_index = i + 1
+resolved_href = href
+
+account_resolution_mode = "digit_match"
+resolved_row_index = i + 1
+resolved_href = href
+
+
+# ---------------- STEP EXECUTION LOG : ACCOUNT_ROW_CLICK ----------------
+
+step_counter += 1
+
+frame_url = content_frame.url if content_frame else None
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "ACCOUNT_ROW_CLICK",
+    "status": "PASS",
+    "error_message": None,
+
+    # Frame details
+    "frame_type": "content",
+    "frame_url": frame_url,
+
+    # Locator strategy actually used
+    "locator_strategy": "account_row_resolution",
+    "locator_value": {
+        "resolution_mode": account_resolution_mode,
+        "row_index": resolved_row_index,
+        "total_rows": total,
+        "matched_href": resolved_href
+    },
+
+    # Resolved element metadata
+    "resolved_element_tag": "a",
+    "resolved_element_text": None,
+    "resolved_element_id": None,
+    "resolved_element_name": None,
+    "resolved_element_xpath": None,  # dynamic table → xpath intentionally omitted
+
+    # Semantic input
+    "input_value": step_name,
+
+    # Confidence scoring
+    "confidence": "HIGH" if account_resolution_mode in ("masked_last4", "digit_match") else "MEDIUM",
+
+    "execution_ts": datetime.now().isoformat()
+})
+
+
