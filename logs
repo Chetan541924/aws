@@ -151,3 +151,60 @@ step_execution_logs.append({
 
     "execution_ts": datetime.now().isoformat()
 })
+
+
+
+
+select_resolution_case = "ccs_action_dropdown"
+resolved_option_value = await opt.get_attribute("value")
+resolved_select_name = await sel.get_attribute("name")
+await sel.select_option(value=resolved_option_value)
+
+select_resolution_case = "generic_select"
+resolved_option_value = await opt.get_attribute("value")
+resolved_select_name = await sel.get_attribute("name")
+
+
+
+# ---------------- STEP EXECUTION LOG : SELECT ----------------
+
+step_counter += 1
+
+frame_url = content_frame.url if content_frame else None
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "SELECT",
+    "status": "PASS",
+    "error_message": None,
+
+    # Frame details
+    "frame_type": "content",
+    "frame_url": frame_url,
+
+    # Locator strategy actually used
+    "locator_strategy": "select_option",
+    "locator_value": {
+        "resolution_case": select_resolution_case,
+        "select_name": resolved_select_name,
+        "selected_option_text": option_text,
+        "selected_option_value": resolved_option_value
+    },
+
+    # Resolved element metadata
+    "resolved_element_tag": "select",
+    "resolved_element_text": None,
+    "resolved_element_id": None,
+    "resolved_element_name": resolved_select_name,
+    "resolved_element_xpath": None,   # semantic select, xpath intentionally omitted
+
+    # Input semantics
+    "input_value": option_text,
+
+    # Confidence
+    "confidence": "HIGH" if select_resolution_case == "ccs_action_dropdown" else "MEDIUM",
+
+    "execution_ts": datetime.now().isoformat()
+})
