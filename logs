@@ -155,6 +155,11 @@ step_execution_logs.append({
 
 
 
+select_resolution_case = None   # "ccs_action_dropdown" | "generic_select"
+resolved_select_name = None
+resolved_option_value = None
+
+
 select_resolution_case = "ccs_action_dropdown"
 resolved_option_value = await opt.get_attribute("value")
 resolved_select_name = await sel.get_attribute("name")
