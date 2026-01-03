@@ -1,0 +1,62 @@
+<Window x:Class="jpmc_genai.ExecutionLogViewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Execution Logs"
+        Height="600"
+        Width="1000">
+
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="3*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- LEFT: STEP TABLE -->
+        <DataGrid x:Name="LogsGrid"
+                  Grid.Column="0"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  SelectionChanged="LogsGrid_SelectionChanged">
+
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Step"
+                                    Binding="{Binding StepOrder}"
+                                    Width="60"/>
+
+                <DataGridTextColumn Header="Action"
+                                    Binding="{Binding ActionType}"
+                                    Width="140"/>
+
+                <DataGridTextColumn Header="Status"
+                                    Binding="{Binding Status}"
+                                    Width="100"/>
+
+                <DataGridTextColumn Header="Confidence"
+                                    Binding="{Binding Confidence}"
+                                    Width="120"/>
+
+                <DataGridTextColumn Header="Strategy"
+                                    Binding="{Binding LocatorStrategy}"
+                                    Width="200"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- RIGHT: STEP DETAILS -->
+        <Border Grid.Column="1"
+                Margin="10,0,0,0"
+                BorderBrush="Gray"
+                BorderThickness="1"
+                Padding="10">
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="StepDetailsBox"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Disabled"
+                         FontFamily="Consolas"
+                         FontSize="13"/>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>
