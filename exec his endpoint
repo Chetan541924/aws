@@ -1,0 +1,54 @@
+from fastapi import APIRouter, HTTPException
+import sqlite3
+import json
+
+router = APIRouter(prefix="/api")
+
+DB_PATH = "path/to/your/sqlite.db"   # 🔴 MUST be same DB Python executor writes to
+
+
+@router.get("/executions/{execution_id}/steps")
+def get_execution_steps(execution_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            step_order,
+            gherkin_step,
+            action_type,
+            status,
+            confidence,
+            locator_strategy,
+            locator_value,
+            frame_url,
+            input_value,
+            execution_ts
+        FROM execution_step_logs
+        WHERE execution_id = ?
+        ORDER BY step_order
+    """, (execution_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return []   # IMPORTANT: return empty array, not error
+
+    steps = []
+    for row in rows:
+        steps.append({
+            "stepOrder": row["step_order"],
+            "gherkinStep": row["gherkin_step"],
+            "actionType": row["action_type"],
+            "status": row["status"],
+            "confidence": row["confidence"],
+            "locatorStrategy": row["locator_strategy"],
+            "locatorValue": json.loads(row["locator_value"]) if row["locator_value"] else None,
+            "frameUrl": row["frame_url"],
+            "inputValue": row["input_value"],
+            "executionTs": row["execution_ts"]
+        })
+
+    return steps
