@@ -67,3 +67,31 @@ namespace jpmc_genai
         }
     }
 }
+
+
+
+using System.Collections.Generic;
+
+namespace jpmc_genai
+{
+    public class ExecutionHistoryModel
+    {
+        public List<ExecutionStepLog> StepLogs { get; set; }
+    }
+}
+
+
+namespace jpmc_genai
+{
+    public class ExecutionStepLog
+    {
+        public int StepOrder { get; set; }
+        public string GherkinStep { get; set; }
+        public string ActionType { get; set; }
+        public string Status { get; set; }
+        public string Confidence { get; set; }
+        public string LocatorStrategy { get; set; }
+        public string InputValue { get; set; }
+        public string FrameUrl { get; set; }
+    }
+}
