@@ -17,28 +17,42 @@
                   AutoGenerateColumns="False"
                   IsReadOnly="True"
                   SelectionMode="Single"
+                  HeadersVisibility="Column"
                   SelectionChanged="LogsGrid_SelectionChanged">
 
             <DataGrid.Columns>
+
+                <!-- STEP -->
                 <DataGridTextColumn Header="Step"
                                     Binding="{Binding StepOrder}"
-                                    Width="60"/>
+                                    Width="60">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="HorizontalAlignment" Value="Center"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
 
+                <!-- ACTION -->
                 <DataGridTextColumn Header="Action"
                                     Binding="{Binding ActionType}"
-                                    Width="140"/>
+                                    Width="*"/>
 
+                <!-- STATUS -->
                 <DataGridTextColumn Header="Status"
                                     Binding="{Binding Status}"
-                                    Width="100"/>
+                                    Width="90"/>
 
+                <!-- CONFIDENCE -->
                 <DataGridTextColumn Header="Confidence"
                                     Binding="{Binding Confidence}"
-                                    Width="120"/>
+                                    Width="110"/>
 
+                <!-- LOCATOR STRATEGY -->
                 <DataGridTextColumn Header="Strategy"
                                     Binding="{Binding LocatorStrategy}"
-                                    Width="200"/>
+                                    Width="1.5*"/>
             </DataGrid.Columns>
         </DataGrid>
 
@@ -55,7 +69,8 @@
                          TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Disabled"
                          FontFamily="Consolas"
-                         FontSize="13"/>
+                         FontSize="13"
+                         Background="Transparent"/>
             </ScrollViewer>
         </Border>
     </Grid>
