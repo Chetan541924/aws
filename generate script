@@ -33,41 +33,42 @@ if not execution_logs:
 
 
 prompt = f"""
-You are a senior automation engineer.
+You are an expert {script_type} automation engineer.
 
-Your task is to generate a SINGLE, LINEAR, EXECUTABLE automation script.
+TEST CASE ID: {testcase_id}
+FRAMEWORK: {script_type}
+LANGUAGE: {script_lang}
 
-STRICT RULES:
-- Do NOT create helper classes
-- Do NOT create reusable methods
-- Do NOT refactor steps
-- Do NOT invent selectors
-- Execute steps STRICTLY in order
-- Use ONLY data from execution logs
-- One action = one automation command
-- Output ONLY executable code
-- NO explanations, NO markdown
-
-TECH STACK:
-Framework: {script_type}
-Language: {script_lang}
+{prereq_text}
 
 TEST PLAN (INTENT):
-{json.dumps(normalized_testplan, indent=2)}
+{json.dumps(normalized_testplan, indent=2, ensure_ascii=False)}
 
-EXECUTION LOGS (GROUND TRUTH):
-{json.dumps(execution_logs, indent=2)}
+EXECUTION LOGS (ACTUAL EXECUTION DATA):
+{json.dumps(execution_logs, indent=2, ensure_ascii=False)}
 
-INSTRUCTIONS:
-- Convert each execution log entry into exactly one automation step
-- Preserve locator strategy and locator value exactly
-- Preserve frame usage
-- Preserve input values
-- Use explicit waits where needed
-- The final script must be runnable top-to-bottom
+CRITICAL INSTRUCTIONS (READ CAREFULLY):
 
-OUTPUT:
-Return ONLY the final executable script as plain text.
+- Generate a SINGLE, LINEAR, EXECUTABLE automation script
+- DO NOT create helper classes
+- DO NOT create reusable methods
+- DO NOT refactor or merge steps
+- DO NOT invent selectors
+- DO NOT change locator strategies
+- DO NOT skip steps
+- Execute steps STRICTLY in the order of execution logs
+- Each execution log entry MUST map to exactly ONE automation command
+- Use frame navigation exactly as recorded
+- Use waits explicitly where needed
+- Preserve input values exactly
+- The output must be runnable top-to-bottom
+
+OUTPUT RULES:
+- Return ONLY the final executable script
+- NO markdown
+- NO JSON
+- NO explanations
+- NO comments outside the code
 """
 
 
