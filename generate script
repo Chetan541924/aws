@@ -1,0 +1,102 @@
+def get_execution_logs(testcase_id: str) -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            step_order,
+            gherkin_step,
+            action_type,
+            locator_strategy,
+            locator_value,
+            input_value,
+            frame_url,
+            confidence
+        FROM execution_steps
+        WHERE testcase_id = ?
+        ORDER BY step_order
+    """, (testcase_id,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+
+execution_logs = get_execution_logs(testcase_id)
+
+if not execution_logs:
+    raise HTTPException(400, "No execution logs found for this test case")
+
+
+
+prompt = f"""
+You are a senior automation engineer.
+
+Your task is to generate a SINGLE, LINEAR, EXECUTABLE automation script.
+
+STRICT RULES:
+- Do NOT create helper classes
+- Do NOT create reusable methods
+- Do NOT refactor steps
+- Do NOT invent selectors
+- Execute steps STRICTLY in order
+- Use ONLY data from execution logs
+- One action = one automation command
+- Output ONLY executable code
+- NO explanations, NO markdown
+
+TECH STACK:
+Framework: {script_type}
+Language: {script_lang}
+
+TEST PLAN (INTENT):
+{json.dumps(normalized_testplan, indent=2)}
+
+EXECUTION LOGS (GROUND TRUTH):
+{json.dumps(execution_logs, indent=2)}
+
+INSTRUCTIONS:
+- Convert each execution log entry into exactly one automation step
+- Preserve locator strategy and locator value exactly
+- Preserve frame usage
+- Preserve input values
+- Use explicit waits where needed
+- The final script must be runnable top-to-bottom
+
+OUTPUT:
+Return ONLY the final executable script as plain text.
+"""
+
+
+
+raw_output = response.choices[0].message.content.strip()
+
+if not raw_output:
+    raise HTTPException(500, "Generated script is empty")
+
+generated_script = raw_output.replace("\\n", "\n").strip()
+
+
+
+
+class GeneratedScriptResponse(BaseModel):
+    testcase_id: str
+    script_type: str
+    script_lang: str
+    generated_script: str
+    model_used: str
+
+
+return GeneratedScriptResponse(
+    testcase_id=testcase_id,
+    script_type=script_type,
+    script_lang=script_lang,
+    generated_script=generated_script,
+    model_used=response.model
+)
+
+
+
