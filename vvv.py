@@ -16,14 +16,18 @@ elif action_type == "RADIO":
     # ============================================================
     logger.info(LogCategory.EXECUTION, "[DEBUG] Waiting for page to stabilize...")
     await page.wait_for_timeout(3000)
-    await content_frame.wait_for_load_state("networkidle", timeout=15000)
+    
+    try:
+        await content_frame.wait_for_load_state("networkidle", timeout=15000)
+    except:
+        logger.warning(LogCategory.EXECUTION, "[DEBUG] Network didn't stabilize, continuing...")
+    
     await page.wait_for_timeout(2000)
 
     # ============================================================
-    # STRATEGY: Find ALL radio groups on the page, select by index
+    # STRATEGY: Find ALL radio groups, then intelligently select
     # ============================================================
     
-    # Find all visible radio button groups (by unique 'name' attribute)
     radio_groups = await content_frame.evaluate("""
         () => {
             const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
@@ -34,12 +38,25 @@ elif action_type == "RADIO":
                 if (!groups[name]) {
                     groups[name] = [];
                 }
+                
+                // Check if element is actually visible
+                const rect = radio.getBoundingClientRect();
+                const isVisible = (
+                    radio.offsetParent !== null &&
+                    rect.width > 0 && 
+                    rect.height > 0 &&
+                    window.getComputedStyle(radio).visibility !== 'hidden' &&
+                    window.getComputedStyle(radio).display !== 'none'
+                );
+                
                 groups[name].push({
                     id: radio.id,
                     name: radio.name,
                     value: radio.value,
                     checked: radio.checked,
-                    visible: radio.offsetParent !== null
+                    visible: isVisible,
+                    top: rect.top,
+                    left: rect.left
                 });
             });
             
@@ -53,17 +70,54 @@ elif action_type == "RADIO":
     )
 
     # ============================================================
-    # Find the MOST RECENT visible radio group (heuristic)
+    # SMART SELECTION: Prioritize groups with valid IDs and values
     # ============================================================
     target_group_name = None
     target_group_radios = []
 
-    # Get the last (most recent) visible radio group
+    # Priority 1: Groups with 'answer' in the name (ERBE scenario radios)
     for group_name, radios in radio_groups.items():
-        visible_radios = [r for r in radios if r['visible']]
-        if visible_radios:
-            target_group_name = group_name
-            target_group_radios = visible_radios
+        if 'answer' in group_name.lower():
+            visible_radios = [r for r in radios if r['visible'] and r['id']]
+            if visible_radios and len(visible_radios) >= 2:  # Must have at least 2 options
+                target_group_name = group_name
+                target_group_radios = visible_radios
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[DEBUG] Priority match: Found 'answer' group: {group_name}"
+                )
+                break
+
+    # Priority 2: Groups with 'customerType' (Customer search radios)
+    if not target_group_name:
+        for group_name, radios in radio_groups.items():
+            if 'customertype' in group_name.lower():
+                visible_radios = [r for r in radios if r['visible'] and r['id']]
+                if visible_radios:
+                    target_group_name = group_name
+                    target_group_radios = visible_radios
+                    logger.info(
+                        LogCategory.EXECUTION,
+                        f"[DEBUG] Priority match: Found 'customerType' group: {group_name}"
+                    )
+                    break
+
+    # Priority 3: Any group with visible radios (excluding filters)
+    if not target_group_name:
+        for group_name, radios in radio_groups.items():
+            # Exclude filter/hidden groups
+            if 'filter' in group_name.lower():
+                continue
+                
+            visible_radios = [r for r in radios if r['visible'] and r['id']]
+            if visible_radios and len(visible_radios) >= 2:
+                target_group_name = group_name
+                target_group_radios = visible_radios
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[DEBUG] Fallback match: Found group: {group_name}"
+                )
+                break
 
     if not target_group_name:
         raise RuntimeError("No visible radio button groups found on page")
@@ -72,6 +126,13 @@ elif action_type == "RADIO":
         LogCategory.EXECUTION,
         f"[DEBUG] Selected radio group: {target_group_name} with {len(target_group_radios)} options"
     )
+
+    # Log all radios in the selected group
+    for i, radio in enumerate(target_group_radios):
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[DEBUG] Radio {i+1}: id={radio['id']}, value={radio['value']}, checked={radio['checked']}"
+        )
 
     # ============================================================
     # Validate index
@@ -87,6 +148,9 @@ elif action_type == "RADIO":
     target_radio = target_group_radios[idx]
     radio_id = target_radio['id']
 
+    if not radio_id:
+        raise RuntimeError(f"Radio button at index {answer_index} has no ID")
+
     logger.info(
         LogCategory.EXECUTION,
         f"[DEBUG] Target radio: id={radio_id}, value={target_radio['value']}"
@@ -100,26 +164,29 @@ elif action_type == "RADIO":
             const element = document.getElementById(radioId);
             
             if (!element) {
-                return {success: false, error: 'Element not found'};
+                return {success: false, error: 'Element not found', id: radioId};
             }
 
             // Scroll into view (center)
             element.scrollIntoView({behavior: 'instant', block: 'center'});
             
-            // Wait a moment for scroll to complete
+            // Wait for scroll to complete
             return new Promise(resolve => {
                 setTimeout(() => {
                     // Check visibility
                     const rect = element.getBoundingClientRect();
-                    const isVisible = rect.top >= 0 && 
-                                    rect.bottom <= window.innerHeight &&
-                                    element.offsetParent !== null;
+                    const isVisible = (
+                        rect.top >= 0 && 
+                        rect.bottom <= window.innerHeight &&
+                        element.offsetParent !== null
+                    );
                     
                     if (!isVisible) {
                         resolve({
                             success: false, 
                             error: 'Element not visible after scroll',
-                            rect: {top: rect.top, bottom: rect.bottom}
+                            rect: {top: rect.top, bottom: rect.bottom},
+                            id: radioId
                         });
                         return;
                     }
@@ -128,20 +195,17 @@ elif action_type == "RADIO":
                     element.click();
                     element.checked = true;
 
-                    // Trigger change event
-                    const event = new Event('change', { bubbles: true });
-                    element.dispatchEvent(event);
-
-                    // Also trigger click event (some forms need this)
-                    const clickEvent = new Event('click', { bubbles: true });
-                    element.dispatchEvent(clickEvent);
+                    // Trigger events
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                    element.dispatchEvent(new Event('click', { bubbles: true }));
 
                     resolve({
                         success: true, 
                         checked: element.checked,
-                        value: element.value
+                        value: element.value,
+                        id: radioId
                     });
-                }, 500);  // 500ms delay for scroll to finish
+                }, 500);
             });
         }""",
         radio_id
@@ -154,14 +218,14 @@ elif action_type == "RADIO":
 
     if not click_result.get('success'):
         raise RuntimeError(
-            f"Failed to click radio button: {click_result.get('error')}"
+            f"Failed to click radio button id='{radio_id}': {click_result.get('error')}"
         )
 
     # Verify selection
     await page.wait_for_timeout(1000)
 
     is_checked = await content_frame.evaluate(
-        f"() => document.getElementById('{radio_id}').checked"
+        f"() => {{ const el = document.getElementById('{radio_id}'); return el ? el.checked : false; }}"
     )
 
     if not is_checked:
@@ -172,38 +236,10 @@ elif action_type == "RADIO":
     logger.info(
         LogCategory.EXECUTION,
         f"[PHASE 3] RADIO selected successfully: answer={answer_index}, "
-        f"id={radio_id}, value={target_radio['value']}"
+        f"group={target_group_name}, id={radio_id}, value={target_radio['value']}"
     )
 
     await page.wait_for_timeout(1500)
-```
-
-## Test Case for Customer Search Radio Buttons
-
-Create a simple test with these steps:
-```
-Step 1: Given the user is on the Home screen
-Step 2: When the user click on the link with the name = Customer
-Step 3: When the user selects the radio button with answer = 2
-Step 4: When the user selects the radio button with answer = 1
-```
-
-## Key Improvements in New Code
-
-1. **🎯 Generic Selector** - Works with ANY radio button group (customerType, answer, etc.)
-2. **🔍 Auto-Discovery** - Finds all radio groups on the page automatically
-3. **👁️ Visibility Check** - Only considers visible radio buttons
-4. **📍 Smart Selection** - Selects the most recent visible radio group
-5. **⚡ Robust Click** - Uses JavaScript with proper event triggering
-6. **✅ Verification** - Confirms the radio is actually checked after click
-7. **📊 Better Logging** - Shows exactly which radio group and button was clicked
-
-## Expected Output
-
-You should see logs like:
-```
-[DEBUG] Found 1 radio button groups: ['customerSearchForm.customerSearchPanelData.customerType']
-[DEBUG] Selected radio group: customerSearchForm.customerSearchPanelData.customerType with 2 options
-[DEBUG] Target radio: id=customerSearchForm.customerSearchPanelData.customerType2, value=nonindividual
-[DEBUG] Click result: {'success': True, 'checked': True, 'value': 'nonindividual'}
-[PHASE 3] RADIO selected successfully: answer=2, id=customerSearchForm.customerSearchPanelData.customerType2, value=nonindividual
+    
+    # ✅ ADDED: Continue to next step
+    continue
