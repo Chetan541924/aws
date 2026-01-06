@@ -205,5 +205,26 @@ await content_frame.evaluate("""
 # ... your radio code here ...
 
 # After failure, dump scroll events
-scroll_events = await content_frame.evaluate("() => window.scrollEvents")
-logger.error(LogCategory.EXECUTION, f"Scroll events: {scroll_events}")
+try:
+        scroll_events = await content_frame.evaluate("() => window.scrollEvents")
+        logger.info(
+            LogCategory.EXECUTION, 
+            f"[DEBUG] Total scroll events captured: {len(scroll_events)}"
+        )
+        
+        # Log each scroll event
+        for idx, event in enumerate(scroll_events):
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Scroll event {idx + 1}: "
+                f"scrollY={event['scrollY']}, "
+                f"time={event['time']}"
+            )
+            # Optionally log stack trace (can be verbose)
+            # logger.info(LogCategory.EXECUTION, f"Stack: {event['stack']}")
+            
+    except Exception as e:
+        logger.error(LogCategory.EXECUTION, f"[DEBUG] Failed to retrieve scroll events: {e}")
+    
+    # Final wait for any page reactions
+    await page.wait_for_timeout(2000)
