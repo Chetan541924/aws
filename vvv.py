@@ -180,3 +180,30 @@ elif action_type == "RADIO":
     
     # Final wait for any page reactions
     await page.wait_for_timeout(2000)
+
+
+
+
+
+
+
+# DEBUG: Monitor scroll events
+await content_frame.evaluate("""
+    () => {
+        window.scrollEvents = [];
+        window.addEventListener('scroll', () => {
+            const stack = new Error().stack;
+            window.scrollEvents.push({
+                time: Date.now(),
+                scrollY: window.scrollY,
+                stack: stack
+            });
+        });
+    }
+""")
+
+# ... your radio code here ...
+
+# After failure, dump scroll events
+scroll_events = await content_frame.evaluate("() => window.scrollEvents")
+logger.error(LogCategory.EXECUTION, f"Scroll events: {scroll_events}")
