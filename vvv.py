@@ -1,65 +1,89 @@
-(//div[@id='ACCOUNT_ACTIVITY_Div']//tr[contains(@class,'subPanelContent')])[1]//input[@type='checkbox' and not(@type='hidden')]
-
-elif action_type == "CHECKBOX":
-
+elif action_type == "RADIO":
     step_lower = step_name.lower()
 
-    # -------------------------------
-    # Extract row number
-    # -------------------------------
-    match = re.search(r"row\s*(\d+)", step_lower)
+    # Extract answer index (answer = 1 / 2)
+    match = re.search(r"answer\s*=\s*(\d+)", step_lower)
     if not match:
-        raise RuntimeError(
-            "CHECKBOX step must specify row number (e.g. 'row 1')"
-        )
+        raise RuntimeError("RADIO step must specify answer = <number>")
 
-    index = int(match.group(1)) - 1  # zero-based index
+    answer_index = match.group(1)
 
-    # -------------------------------
     # Resolve frames
-    # -------------------------------
     nav_frame, content_frame = resolve_ccs_frames(page)
 
-    # -------------------------------
-    # Locate ALL visible checkboxes
-    # -------------------------------
-    checkboxes = content_frame.locator(
-        "//div[@id='ACCOUNT_ACTIVITY_Div']"
-        "//input[@type='checkbox' and not(@type='hidden')]"
-    )
+    # ============================================================
+    # CRITICAL: Wait for page to stabilize after previous actions
+    # ============================================================
+    await page.wait_for_timeout(3000)  # Let any auto-scroll finish
+    await content_frame.wait_for_load_state("networkidle", timeout=15000)
 
-    count = await checkboxes.count()
+    # Locate radio by ID suffix
+    radio_selector = f"input[type='radio'][id$='answer{answer_index}']"
+    radio = content_frame.locator(radio_selector)
 
-    if count == 0:
-        raise RuntimeError("No checkboxes found in Account Activity")
+    # Wait for radio to exist
+    await radio.wait_for(state="attached", timeout=10000)
 
-    if index < 0 or index >= count:
+    if await radio.count() == 0:
         raise RuntimeError(
-            f"Checkbox row {index+1} out of range. Total rows: {count}"
+            f"Radio with id ending 'answer{answer_index}' not found"
         )
 
-    checkbox = checkboxes.nth(index)
+    radio = radio.first
 
-    # -------------------------------
-    # Scroll + click
-    # -------------------------------
-    await checkbox.scroll_into_view_if_needed()
-    await checkbox.wait_for(state="visible", timeout=15000)
+    # ============================================================
+    # FORCE scroll into view BEFORE clicking
+    # ============================================================
+    try:
+        await radio.scroll_into_view_if_needed(timeout=5000)
+    except Exception as e:
+        logger.warning(
+            LogCategory.EXECUTION,
+            f"Scroll failed, attempting direct scroll: {str(e)}"
+        )
+        # Fallback: Force scroll using JavaScript
+        await content_frame.evaluate(
+            """(selector) => {
+                const element = document.querySelector(selector);
+                if (element) {
+                    element.scrollIntoView({behavior: 'instant', block: 'center'});
+                }
+            }""",
+            radio_selector
+        )
+        await page.wait_for_timeout(1000)
 
-    if not await checkbox.is_checked():
-        await checkbox.click(force=True)
+    # ============================================================
+    # Verify visibility before clicking
+    # ============================================================
+    await radio.wait_for(state="visible", timeout=10000)
 
-    # -------------------------------
-    # Post-action delay (visual verify)
-    # -------------------------------
-    await page.wait_for_timeout(5000)
+    # ============================================================
+    # Click using JavaScript (most reliable for radio buttons)
+    # ============================================================
+    await content_frame.evaluate(
+        """(selector) => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.click();
+            } else {
+                throw new Error('Radio button not found for click');
+            }
+        }""",
+        radio_selector
+    )
+
+    # Visual verification delay
+    await page.wait_for_timeout(2000)
+
+    # Verify radio is checked
+    is_checked = await radio.is_checked()
+    if not is_checked:
+        raise RuntimeError(
+            f"Radio button answer={answer_index} was clicked but not selected"
+        )
 
     logger.info(
         LogCategory.EXECUTION,
-        f"[PHASE 3] Checkbox selected in Account Activity row {index+1}"
+        f"[PHASE 3] RADIO selected successfully: answer={answer_index}"
     )
-
-    # Pause AFTER click (visual verify)
-    # -------------------------------
-    await page.wait_for_timeout(5000)
-
