@@ -1,168 +1,231 @@
-When the user clicks on the link with the name = MITCHELLS OFFICES & STORAGE LLC
-
-Then the Text 'Customer Display' is visible
-
-Then the Text 'MITCHELLS OFFICES & STORAGE LLC' is visible
-
-When the user selects 'Create a New Claim' from the dropdown with name = Select An Action
-
-When the user clicks the button with name = Go
-
-Then the Text 'Create a Claim' is visible
-
-Then the Text 'Reference Number: New Claim' is visible
-
-
-elif action_type == "SELECT":
-
-    if "selects" not in step_name:
-        raise RuntimeError("SELECT step format invalid")
-
-    option_text = (
-        step_name
-        .split("selects", 1)[-1]
-        .split("from", 1)[0]
-        .strip()
-        .strip("'\"")
-        .lower()
-    )
-
-    nav_frame, content_frame = resolve_ccs_frames(page)
-
-    await page.wait_for_load_state("networkidle")
-
-    # ==========================================================
-    # CASE 1: CCS "Select An Action" dropdown (Create New Claim)
-    # ==========================================================
-    if "create a new claim" in option_text:
-        await content_frame.wait_for_timeout(2000)
-
-        async def try_action_select(frame):
-            sel = frame.locator("select[name='selectAndGo']")
-            if await sel.count() == 0:
-                return False
-
-            await sel.scroll_into_view_if_needed()
-            await sel.wait_for(state="visible", timeout=10000)
-
-            options = sel.locator("option")
-            count = await options.count()
-
-            for i in range(count):
-                opt = options.nth(i)
-                text = (await opt.text_content() or "").lower()
-                value = (await opt.get_attribute("value") or "").lower()
-
-                if option_text in text or option_text in value:
-                    await sel.select_option(value=await opt.get_attribute("value"))
-                    return True
-
-            return False
-
-        if not await try_action_select(content_frame):
-            if not await try_action_select(nav_frame):
-                raise RuntimeError(
-                    f"Option '{option_text}' not found in Select An Action dropdown"
-                )
-
-        logger.info(
-            LogCategory.EXECUTION,
-            f"[PHASE 3] SELECT successful: {option_text}"
-        )
-        return
-
-    # ==========================================================
-    # CASE 2: Generic SELECT (Account Number, etc.)
-    # ==========================================================
-    await content_frame.wait_for_selector("select", timeout=15000)
-
-    selects = content_frame.locator("select")
-    count = await selects.count()
-
-    for i in range(count):
-        sel = selects.nth(i)
-        await sel.scroll_into_view_if_needed()
-        await sel.wait_for(state="visible", timeout=10000)
-
-        options = sel.locator("option")
-        opt_count = await options.count()
-
-        for j in range(opt_count):
-            opt = options.nth(j)
-            text = (await opt.text_content() or "").lower()
-            value = (await opt.get_attribute("value") or "").lower()
-
-            if option_text in text or option_text in value:
-                await sel.select_option(value=await opt.get_attribute("value"))
-
-                logger.info(
-                    LogCategory.EXECUTION,
-                    f"[PHASE 3] SELECT successful: {option_text}"
-                )
-                return
-
-    raise RuntimeError(f"Option '{option_text}' not found in any <select>")
-
-
-
-elif action_type == "ACCOUNT_ROW_CLICK":
-
-    nav_frame, content_frame = resolve_ccs_frames(page)
-
-    # VERY IMPORTANT: wait for customer account list to exist
-    account_list = content_frame.locator(
-        "div:has-text('Customer Account List')"
-    )
-    await account_list.wait_for(state="visible", timeout=15000)
-
-    # Only spans INSIDE Customer Account List
-    account_spans = account_list.locator(
-        "span[onmouseover][onmouseout]"
-    )
-
-    count = await account_spans.count()
-    if count == 0:
-        raise RuntimeError("No account numbers found in Customer Account List")
-
+elif action_type == "RADIO":
     step_lower = step_name.lower()
 
-    if "first" in step_lower:
-        span = account_spans.nth(0)
-    elif "last" in step_lower:
-        span = account_spans.nth(count - 1)
-    else:
-        raise RuntimeError("Account row click requires 'first' or 'last'")
+    # Extract answer index (answer = 1 / 2)
+    match = re.search(r"answer\s*=\s*(\d+)", step_lower)
+    if not match:
+        raise RuntimeError("RADIO step must specify answer = <number>")
 
-    # ---- CRITICAL PART ----
-    # REAL mouse interaction (not span.click())
-    box = await span.bounding_box()
-    if not box:
-        raise RuntimeError("Account span has no bounding box")
+    answer_index = match.group(1)
 
-    # Move mouse INTO the element (triggers onmouseover)
-    await page.mouse.move(
-        box["x"] + box["width"] / 2,
-        box["y"] + box["height"] / 2
-    )
+    # Resolve frames
+    nav_frame, content_frame = resolve_ccs_frames(page)
 
-    await page.wait_for_timeout(300)  # allow hover JS to run
+    # ============================================================
+    # EXTENDED STABILIZATION
+    # ============================================================
+    logger.info(LogCategory.EXECUTION, "[DEBUG] Waiting for page to stabilize...")
+    await page.wait_for_timeout(3000)
+    
+    try:
+        await content_frame.wait_for_load_state("networkidle", timeout=15000)
+    except Exception as e:
+        logger.warning(LogCategory.EXECUTION, f"[DEBUG] Network didn't stabilize: {str(e)}")
+    
+    await page.wait_for_timeout(2000)
 
-    # Click using mouse (this triggers CCS JS navigation)
-    await page.mouse.click(
-        box["x"] + box["width"] / 2,
-        box["y"] + box["height"] / 2
-    )
-
-    # ---- WAIT FOR NAVIGATION ----
-    # CCS does NOT always trigger networkidle
-    # Wait for Account Display header instead
-    await content_frame.wait_for_selector(
-        "div:has-text('Account Display')",
-        timeout=20000
-    )
+    # ============================================================
+    # STRATEGY: Find ALL radio groups (WITH ERROR HANDLING)
+    # ============================================================
+    
+    try:
+        radio_groups = await content_frame.evaluate("""
+            () => {
+                const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+                const groups = {};
+                
+                radios.forEach(radio => {
+                    const name = radio.name;
+                    if (!groups[name]) {
+                        groups[name] = [];
+                    }
+                    
+                    // Check if element is actually visible
+                    const rect = radio.getBoundingClientRect();
+                    const isVisible = (
+                        radio.offsetParent !== null &&
+                        rect.width > 0 && 
+                        rect.height > 0 &&
+                        window.getComputedStyle(radio).visibility !== 'hidden' &&
+                        window.getComputedStyle(radio).display !== 'none'
+                    );
+                    
+                    groups[name].push({
+                        id: radio.id,
+                        name: radio.name,
+                        value: radio.value,
+                        checked: radio.checked,
+                        visible: isVisible,
+                        top: rect.top,
+                        left: rect.left
+                    });
+                });
+                
+                return groups;
+            }
+        """)
+    except Exception as e:
+        logger.error(LogCategory.EXECUTION, f"[DEBUG] Failed to evaluate radio groups: {str(e)}")
+        raise RuntimeError(f"Failed to discover radio button groups: {str(e)}")
 
     logger.info(
         LogCategory.EXECUTION,
-        "[PHASE 3] ACCOUNT ROW CLICK successful"
+        f"[DEBUG] Found {len(radio_groups)} radio button groups: {list(radio_groups.keys())}"
     )
 
+    # ============================================================
+    # SMART SELECTION: Prioritize groups with valid IDs and values
+    # ============================================================
+    target_group_name = None
+    target_group_radios = []
+
+    # Priority 1: Groups with 'answer' in the name (ERBE scenario radios)
+    for group_name, radios in radio_groups.items():
+        if 'answer' in group_name.lower():
+            visible_radios = [r for r in radios if r['visible'] and r['id']]
+            if visible_radios and len(visible_radios) >= 2:
+                target_group_name = group_name
+                target_group_radios = visible_radios
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[DEBUG] Priority match: Found 'answer' group: {group_name}"
+                )
+                break
+
+    # Priority 2: Groups with 'customerType' (Customer search radios)
+    if not target_group_name:
+        for group_name, radios in radio_groups.items():
+            if 'customertype' in group_name.lower():
+                visible_radios = [r for r in radios if r['visible'] and r['id']]
+                if visible_radios:
+                    target_group_name = group_name
+                    target_group_radios = visible_radios
+                    logger.info(
+                        LogCategory.EXECUTION,
+                        f"[DEBUG] Priority match: Found 'customerType' group: {group_name}"
+                    )
+                    break
+
+    # Priority 3: Any group with visible radios (excluding filters)
+    if not target_group_name:
+        for group_name, radios in radio_groups.items():
+            if 'filter' in group_name.lower():
+                continue
+                
+            visible_radios = [r for r in radios if r['visible'] and r['id']]
+            if visible_radios and len(visible_radios) >= 2:
+                target_group_name = group_name
+                target_group_radios = visible_radios
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[DEBUG] Fallback match: Found group: {group_name}"
+                )
+                break
+
+    if not target_group_name:
+        raise RuntimeError("No visible radio button groups found on page")
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[DEBUG] Selected radio group: {target_group_name} with {len(target_group_radios)} options"
+    )
+
+    # Log all radios in the selected group
+    for i, radio in enumerate(target_group_radios):
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[DEBUG] Radio {i+1}: id={radio['id']}, value={radio['value']}, checked={radio['checked']}"
+        )
+
+    # ============================================================
+    # Validate index
+    # ============================================================
+    idx = int(answer_index) - 1
+    
+    if idx < 0 or idx >= len(target_group_radios):
+        raise RuntimeError(
+            f"Radio button index {answer_index} out of range. "
+            f"Group '{target_group_name}' has {len(target_group_radios)} options"
+        )
+
+    target_radio = target_group_radios[idx]
+    radio_id = target_radio['id']
+
+    if not radio_id:
+        raise RuntimeError(f"Radio button at index {answer_index} has no ID")
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[DEBUG] Target radio: id={radio_id}, value={target_radio['value']}"
+    )
+
+    # ============================================================
+    # CLICK using Playwright native methods (NO JAVASCRIPT)
+    # ============================================================
+    
+    # Locate the radio button
+    radio_locator = content_frame.locator(f"input[type='radio'][id='{radio_id}']")
+    
+    # Wait for it to be present
+    try:
+        await radio_locator.wait_for(state="attached", timeout=10000)
+    except Exception as e:
+        raise RuntimeError(f"Radio button with id '{radio_id}' not found: {str(e)}")
+    
+    # Scroll into view
+    try:
+        await radio_locator.scroll_into_view_if_needed(timeout=5000)
+    except Exception as e:
+        logger.warning(LogCategory.EXECUTION, f"[DEBUG] Scroll warning: {str(e)}")
+    
+    await page.wait_for_timeout(1000)
+    
+    # Wait for visibility
+    try:
+        await radio_locator.wait_for(state="visible", timeout=10000)
+    except Exception as e:
+        raise RuntimeError(f"Radio button id '{radio_id}' not visible: {str(e)}")
+    
+    # Click the radio button
+    try:
+        await radio_locator.click(force=True, timeout=10000)
+    except Exception as e:
+        raise RuntimeError(f"Failed to click radio button id '{radio_id}': {str(e)}")
+    
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[DEBUG] Radio button clicked successfully"
+    )
+    
+    # Wait for UI to update
+    await page.wait_for_timeout(1000)
+
+    # Verify selection (using Playwright method, not evaluate)
+    try:
+        is_checked = await radio_locator.is_checked()
+    except Exception as e:
+        logger.warning(LogCategory.EXECUTION, f"[DEBUG] Verification warning: {str(e)}")
+        is_checked = False
+
+    if not is_checked:
+        # Retry once if not checked
+        logger.warning(LogCategory.EXECUTION, "[DEBUG] Radio not checked, retrying...")
+        try:
+            await radio_locator.click(force=True, timeout=10000)
+            await page.wait_for_timeout(1000)
+            is_checked = await radio_locator.is_checked()
+        except Exception as e:
+            raise RuntimeError(f"Failed to verify radio selection: {str(e)}")
+
+    if not is_checked:
+        raise RuntimeError(
+            f"Radio button id='{radio_id}' was clicked but is not checked"
+        )
+
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] RADIO selected successfully: answer={answer_index}, "
+        f"group={target_group_name}, id={radio_id}, value={target_radio['value']}"
+    )
+
+    await page.wait_for_timeout(1500)
