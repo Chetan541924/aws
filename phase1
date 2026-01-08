@@ -1,361 +1,228 @@
-from playwright.async_api import async_playwright
-import os
+elif action_type == "BUTTON":
 
-execution_output = ""
-execution_message = ""
-final_status = "fail"
+    if "name =" not in step_name:
+        raise RuntimeError("BUTTON step missing button name")
 
-await websocket.send_text(json.dumps({
-    "status": "RUNNING",
-    "log": "Launching browser session..."
-}))
+    step_lower = step_name.lower()
+    button_name = step_name.split("name =")[-1].strip().lower()
 
-async with async_playwright() as p:
-    browser = await p.chromium.launch(
-        headless=False,
-        executable_path=os.environ.get("exe_path")
-    )
+    # Always resolve frames fresh
+    nav_frame, content_frame = resolve_ccs_frames(page)
 
-    context = await browser.new_context()
-    page = await context.new_page()
+    # Wait for page to be ready
+    await content_frame.wait_for_load_state("domcontentloaded", timeout=15000)
+    await page.wait_for_timeout(1000)
 
-    logger.info(LogCategory.EXECUTION, "Browser launched")
-
-    # ---------------- NAVIGATE TO APP ----------------
-    await page.goto("YOUR_LOGIN_URL")
-
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "Navigated to application home"
-    }))
-
-    # ---------------- ADFS AUTOMATED LOGIN ----------------
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "ADFS login page detected. Performing automated login..."
-    }))
-
-    await page.wait_for_selector('input[placeholder="Standard ID"]', timeout=60000)
-
-    await page.fill(
-        'input[placeholder="Standard ID"]',
-        os.environ["CCS_USERNAME"]
-    )
-
-    await page.fill(
-        'input[placeholder="Password"]',
-        os.environ["CCS_PASSWORD"]
-    )
-
-    await page.click('button:has-text("Sign in")')
-
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "Credentials submitted. Waiting for authentication redirect..."
-    }))
-
-    # Wait until redirected away from ADFS
-    await page.wait_for_function("""
-        () => !window.location.href.includes('/adfs/')
-    """, timeout=120000)
-
-    # ---------------- WAIT FOR CCS UI FRAME ----------------
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "Waiting for CCS UI frame to load..."
-    }))
-
-    await page.wait_for_function("""
-        () => Array.from(window.frames).some(f =>
-            f.location.href.includes('/ccs/')
+    # ------------------------------
+    # Resolve section explicitly
+    # ------------------------------
+    section = None
+    if " in the " in step_lower:
+        section = (
+            step_lower.split(" in the ", 1)[1]
+            .split(" with name", 1)[0]
+            .replace(" section", "")
+            .strip()
         )
-    """, timeout=120000)
 
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "CCS UI frame detected"
-    }))
+    logger.info(
+        LogCategory.EXECUTION,
+        f"[PHASE 3] Looking for button '{button_name}' in section '{section}'"
+    )
 
-    # ---------------- DISCOVER CCS FRAMES ----------------
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "Discovering CCS frames..."
-    }))
-
-    for frame in page.frames:
-        logger.info(LogCategory.EXECUTION, f"FRAME URL: {frame.url}")
-        await websocket.send_text(json.dumps({
-            "status": "RUNNING",
-            "log": f"FRAME URL: {frame.url}"
-        }))
-
-    # ---------------- PHASE 1 COMPLETE ----------------
-    execution_message = "Authentication completed and CCS UI loaded successfully"
-    final_status = "success"
-
-    # ---------------- PHASE 1.5: IDENTIFY FRAME ROLES ----------------
-nav_frame = None
-content_frame = None
-
-for frame in page.frames:
-    if "currentNavPosition.do" in frame.url:
-        nav_frame = frame
-    elif "ccs.do" in frame.url:
-        content_frame = frame
-
-if not nav_frame or not content_frame:
-    raise RuntimeError("PHASE 1.5 FAILED: Required CCS frames not found")
-
-await websocket.send_text(json.dumps({
-    "status": "RUNNING",
-    "log": "PHASE 1.5: Navigation and Content frames identified"
-}))
-
-# ---------------- PHASE 1.5 PROBE: CLICK CLAIMS ----------------
-await websocket.send_text(json.dumps({
-    "status": "RUNNING",
-    "log": "PHASE 1.5 probe: Clicking 'Claims' to validate frame scoping"
-}))
-
-claims_locator = nav_frame.locator("text=Claims")
-
-await claims_locator.wait_for(timeout=30000)
-await claims_locator.click()
-
-await websocket.send_text(json.dumps({
-    "status": "RUNNING",
-    "log": "PHASE 1.5 probe successful: 'Claims' clicked"
-}))
-
-# ================= PHASE 2: STEP-WISE EXECUTION =================
-
-await websocket.send_text(json.dumps({
-    "status": "RUNNING",
-    "log": "PHASE 2: Starting step-wise execution"
-}))
-
-logger.info(LogCategory.EXECUTION, "PHASE 2: Starting step-wise execution")
-
-# ----------------------------------------------------------------
-# Phase 2 runs ONLY current test case steps
-# Prerequisites are already handled in Phase 1
-# ----------------------------------------------------------------
-
-steps = list(testplan_dict["current_bdd_steps"].items())
-
-if not steps:
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": "PHASE 2: No steps found in current test case"
-    }))
-else:
-    for step_name, step_args in steps:
-
-        step_category = classify_step(step_name)  # STATE / ACTION / ASSERT
-
-        await websocket.send_text(json.dumps({
-            "status": "RUNNING",
-            "log": f"PHASE 2: Step -> {step_name} | Category -> {step_category}"
-        }))
-
+    # ------------------------------
+    # SPECIAL HANDLING FOR "EDIT" BUTTONS
+    # ------------------------------
+    if button_name == "edit" and section:
         logger.info(
             LogCategory.EXECUTION,
-            f"[PHASE 2] Step: {step_name} | Category: {step_category}"
+            f"[PHASE 3] Special Edit button handling for section: {section}"
         )
-
+        
+        # Strategy: Find the section by its heading text, then find Edit button within it
+        # Look for div/fieldset that contains the section name
+        
+        # Try multiple section container strategies
+        section_container = None
+        
+        # Strategy 1: Look for exact section text in a div
         try:
-            # ---------------- DOM OBSERVATION ----------------
-            frame_snapshot = [frame.url for frame in page.frames]
-
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[PHASE 2][DOM] Frames: {frame_snapshot}"
+            section_container = content_frame.locator(
+                f"div:has-text('{section}'):has(input[value='Edit'])"
+            ).first
+            await section_container.wait_for(state="visible", timeout=5000)
+            logger.info(LogCategory.EXECUTION, "[DEBUG] Found section using strategy 1")
+        except:
+            pass
+        
+        # Strategy 2: Look for fieldset or panel with legend containing section name
+        if not section_container:
+            try:
+                section_container = content_frame.locator(
+                    f"fieldset:has(legend:has-text('{section}'))"
+                ).first
+                await section_container.wait_for(state="visible", timeout=5000)
+                logger.info(LogCategory.EXECUTION, "[DEBUG] Found section using strategy 2")
+            except:
+                pass
+        
+        # Strategy 3: Find any container with the section text and an Edit button
+        if not section_container:
+            try:
+                # More flexible - find any div/section/fieldset containing both the text and Edit button
+                containers = content_frame.locator("div, section, fieldset")
+                count = await containers.count()
+                
+                for i in range(count):
+                    container = containers.nth(i)
+                    text_content = await container.text_content()
+                    
+                    if text_content and section.lower() in text_content.lower():
+                        # Check if this container has an Edit button
+                        edit_in_container = container.locator("input[value='Edit'], button:has-text('Edit')")
+                        if await edit_in_container.count() > 0:
+                            section_container = container
+                            logger.info(LogCategory.EXECUTION, f"[DEBUG] Found section using strategy 3 at index {i}")
+                            break
+            except:
+                pass
+        
+        if section_container:
+            # Found the section, now click Edit button within it
+            edit_button = section_container.locator("input[value='Edit'], button:has-text('Edit')").first
+            
+            try:
+                await edit_button.scroll_into_view_if_needed()
+                await page.wait_for_timeout(500)
+                await edit_button.wait_for(state="visible", timeout=10000)
+                await edit_button.click(force=True)
+                
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] Edit button clicked in section: {section}"
+                )
+                
+                await page.wait_for_timeout(3000)
+                
+                try:
+                    await content_frame.wait_for_load_state("networkidle", timeout=10000)
+                except:
+                    logger.warning(LogCategory.EXECUTION, "Network didn't reach idle state")
+                
+                await page.wait_for_timeout(1000)
+                
+                # Success - continue to next step
+                # (No 'continue' statement here - let it fall through naturally)
+                
+            except Exception as e:
+                raise RuntimeError(f"Failed to click Edit button in section '{section}': {str(e)}")
+        else:
+            raise RuntimeError(f"Could not locate section '{section}' with Edit button")
+    
+    else:
+        # ------------------------------
+        # NORMAL BUTTON HANDLING (non-Edit or no section)
+        # ------------------------------
+        if section:
+            section_root = content_frame.locator(
+                f"div:has-text('{section.title()}')"
+            ).first
+            
+            try:
+                await section_root.wait_for(state="visible", timeout=10000)
+            except:
+                logger.warning(
+                    LogCategory.EXECUTION,
+                    f"Section '{section}' not immediately visible, searching entire frame"
+                )
+                section_root = content_frame
+            
+            buttons = section_root.locator(
+                "input[type='button'], input[type='submit'], button"
+            )
+        else:
+            buttons = content_frame.locator(
+                "input[type='button'], input[type='submit'], button"
             )
 
-            await websocket.send_text(json.dumps({
-                "status": "RUNNING",
-                "log": f"[PHASE 2] DOM observed for {step_category} step"
-            }))
-
-            # ---------------- FRAME RESOLUTION ----------------
-            nav_frame = None
-            content_frame = None
-
-            for frame in page.frames:
-                if "currentNavPosition.do" in frame.url:
-                    nav_frame = frame
-                elif "ccs.do" in frame.url:
-                    content_frame = frame
-
-            if not nav_frame or not content_frame:
-                raise RuntimeError("Required CCS frames not found")
-
-            logger.info(
-                LogCategory.EXECUTION,
-                "[PHASE 2] CCS frames resolved successfully"
-            )
-
-            # ---------------- NO ACTION YET ----------------
-            # Phase 3 will:
-            # - choose correct frame
-            # - resolve selector
-            # - execute action/assert
-
-        except Exception as e:
-            logger.error(
-                LogCategory.EXECUTION,
-                f"[PHASE 2] Step failed: {step_name} | {str(e)}"
-            )
-
-            await websocket.send_text(json.dumps({
-                "status": "FAILED",
-                "log": f"PHASE 2: Step '{step_name}' failed due to {str(e)}"
-            }))
-            raise
-
-async def click_nav_link(frame, link_text: str):
-    # Strategy 1: ARIA role
-    try:
-        locator = frame.get_by_role(
-            "link",
-            name=link_text,
-            exact=False
-        )
-        await locator.wait_for(state="visible", timeout=5000)
-        await locator.click()
-        return
-    except Exception:
-        pass
-
-    # Strategy 2: Text inside anchor/span
-    try:
-        locator = frame.locator("a").filter(has_text=link_text)
-        await locator.first.wait_for(state="visible", timeout=5000)
-        await locator.first.click()
-        return
-    except Exception:
-        pass
-
-    # Strategy 3: Last-resort text search
-    locator = frame.get_by_text(link_text, exact=False)
-    await locator.wait_for(state="visible", timeout=5000)
-    await locator.click()
-
-
-async def assert_text_visible(frame, expected_text: str):
-    # Strategy 1: visible text
-    try:
-        locator = frame.get_by_text(expected_text, exact=False)
-        await locator.wait_for(state="visible", timeout=5000)
-        return
-    except:
-        pass
-
-    # Strategy 2: text exists anywhere in DOM (hidden allowed)
-    try:
-        await frame.wait_for_function(
-            """(text) => document.body && document.body.innerText.includes(text)""",
-            expected_text,
-            timeout=5000
-        )
-        return
-    except:
-        pass
-
-    # Strategy 3: alert / status roles (very common in CCS)
-    try:
-        alert = frame.get_by_role("alert")
-        await alert.wait_for(timeout=5000)
-        if expected_text.lower() in (await alert.inner_text()).lower():
-            return
-    except:
-        pass
-
-    # Strategy 4: fallback — dump DOM snippet for diagnosis
-    dom = await frame.content()
-    raise AssertionError(
-        f"Text not found using any strategy: '{expected_text}'\n"
-        f"DOM snapshot (first 1000 chars):\n{dom[:1000]}"
-    )
-
-
-def resolve_content_frame(page):
-    for frame in page.frames:
-        if "ccs.do" in frame.url:
-            return frame
-    raise RuntimeError("Content frame not found")
-content_frame = resolve_content_frame(page)
-
-
-# ================= PHASE 3: ACTION / ASSERT EXECUTION =================
-
-if step_category == "ACTION":
-
-    if "click" in step_name.lower():
-
-        # extract link name from step
-        # example: "... name = Agents"
-        if "=" not in step_name:
-            raise RuntimeError("ACTION step missing target name")
-
-        target = step_name.split("=")[-1].strip()
-
-        await websocket.send_text(json.dumps({
-            "status": "RUNNING",
-            "log": f"[PHASE 3] Clicking navigation link: {target}"
-        }))
-
+        clicked = False
+        count = await buttons.count()
+        
         logger.info(
             LogCategory.EXECUTION,
-            f"[PHASE 3] ACTION click on nav link: {target}"
+            f"[PHASE 3] Found {count} buttons in {'section: ' + section if section else 'frame'}"
         )
+        
+        if count == 0:
+            raise RuntimeError(
+                f"No buttons found in {'section: ' + section if section else 'frame'}"
+            )
 
-        await click_nav_link(nav_frame, target)
+        for i in range(count):
+            btn = buttons.nth(i)
+            
+            value = (await btn.get_attribute("value") or "").lower()
+            text = (await btn.text_content() or "").lower()
+            id_ = (await btn.get_attribute("id") or "").lower()
+            
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Button {i+1}: value='{value}', text='{text}', id='{id_}'"
+            )
 
-        await websocket.send_text(json.dumps({
-            "status": "RUNNING",
-            "log": f"[PHASE 3] Click successful: {target}"
-        }))
+            if button_name in (value + text + id_):
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] Found matching button: {button_name}"
+                )
+                
+                await btn.scroll_into_view_if_needed()
+                await page.wait_for_timeout(500)
+                await btn.wait_for(state="visible", timeout=10000)
+                await btn.hover()
+                await content_frame.wait_for_timeout(200)
+                await btn.click(force=True)
+                
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] BUTTON clicked: {button_name}"
+                )
+                
+                await page.wait_for_timeout(3000)
+                
+                try:
+                    await content_frame.wait_for_load_state("networkidle", timeout=10000)
+                except:
+                    logger.warning(
+                        LogCategory.EXECUTION,
+                        "Network didn't reach idle state, continuing anyway"
+                    )
+                
+                await page.wait_for_timeout(1000)
+                
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] BUTTON click successful: {button_name} in {section}"
+                )
+                
+                clicked = True
+                break
 
+        if not clicked:
+            raise RuntimeError(
+                f"Button '{button_name}' not found in {'section: ' + section if section else 'frame'}"
+            )
+```
 
-elif step_category == "ASSERT":
+## How to Use It
 
-    if "'" not in step_name:
-        raise RuntimeError("ASSERT step missing quoted text")
+Update your test steps to include the section name:
+```
+When the user clicks the button in the ERBE Claim section with name = Edit
+When the user clicks the button in the Specialist Only section with name = Edit
+When the user clicks the button in the Does this claim require back dating section with name = Edit
+```
 
-    expected_text = step_name.split("'")[1]
-
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": f"[PHASE 3] Asserting text visible: {expected_text}"
-    }))
-
-    logger.info(
-        LogCategory.EXECUTION,
-        f"[PHASE 3] ASSERT text visible: {expected_text}"
-    )
-
-    await assert_text_visible(content_frame, expected_text)
-
-    await websocket.send_text(json.dumps({
-        "status": "RUNNING",
-        "log": f"[PHASE 3] Assertion passed: {expected_text}"
-    }))
-
-
-else:
-    # STATE steps require no action
-    logger.info(
-        LogCategory.EXECUTION,
-        f"[PHASE 3] STATE step acknowledged: {step_name}"
-    )
-
-
-
-
-    await browser.close()
-
-await websocket.send_text(json.dumps({
-    "status": "SUCCESS",
-    "log": execution_message
-}))
+Or using the visible section headers:
+```
+Step X: When the user clicks the button in the ERBE Claim with name = Edit
