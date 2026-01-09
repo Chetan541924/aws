@@ -39,11 +39,11 @@ elif action_type == "BUTTON":
             f"[PHASE 3] ⚠️ EDIT BUTTON SPECIAL HANDLING ACTIVATED for section: '{section}'"
         )
         
-        # Find the correct Edit button using pure JavaScript
-        target_edit_index = await content_frame.evaluate(
+        # Find AND CLICK the correct Edit button using pure JavaScript
+        click_result = await content_frame.evaluate(
             """
             (sectionName) => {
-                // Find all Edit buttons (input with value="Edit")
+                // Find all Edit buttons
                 const editButtons = Array.from(document.querySelectorAll('input[type="button"][value="Edit"]'));
                 
                 console.log('Found', editButtons.length, 'Edit buttons');
@@ -60,16 +60,27 @@ elif action_type == "BUTTON":
                         // Check if this parent contains the section name
                         if (parentText.toLowerCase().includes(sectionName.toLowerCase())) {
                             // Make sure this is a reasonable parent (not the entire page)
-                            // Look for section boundaries like fieldset, div with certain structure
                             const isReasonableParent = parentText.length < 2000;
                             
                             if (isReasonableParent) {
                                 console.log('Match found at index', i, 'parent tag:', parent.tagName);
+                                
+                                // ============================================
+                                // CLICK IT DIRECTLY IN JAVASCRIPT
+                                // ============================================
+                                
+                                // Scroll into view first
+                                btn.scrollIntoView({behavior: 'instant', block: 'center'});
+                                
+                                // Wait a moment, then click
+                                setTimeout(() => {
+                                    btn.click();
+                                }, 200);
+                                
                                 return {
-                                    found: true,
+                                    success: true,
                                     index: i,
-                                    buttonId: btn.id || '',
-                                    parentTag: parent.tagName,
+                                    buttonId: btn.id || 'no-id',
                                     matchedText: parentText.substring(0, 150)
                                 };
                             }
@@ -81,7 +92,7 @@ elif action_type == "BUTTON":
                 }
                 
                 console.log('No match found for section:', sectionName);
-                return {found: false, totalButtons: editButtons.length};
+                return {success: false, totalButtons: editButtons.length};
             }
             """,
             section
@@ -89,56 +100,39 @@ elif action_type == "BUTTON":
         
         logger.info(
             LogCategory.EXECUTION,
-            f"[DEBUG] Section match result: {target_edit_index}"
+            f"[DEBUG] Edit button click result: {click_result}"
         )
         
-        if target_edit_index.get('found'):
-            # Found the right Edit button!
-            edit_index = target_edit_index['index']
+        if click_result.get('success'):
+            edit_index = click_result['index']
             
             logger.info(
                 LogCategory.EXECUTION,
-                f"[DEBUG] ✅ Found Edit button at index {edit_index} for section '{section}'"
+                f"[PHASE 3] ✅ Edit button clicked via JavaScript in section: {section} (button index: {edit_index})"
             )
             logger.info(
                 LogCategory.EXECUTION,
-                f"[DEBUG] Matched text: {target_edit_index.get('matchedText', '')}"
+                f"[DEBUG] Matched text: {click_result.get('matchedText', '')}"
             )
             
-            # Click the specific Edit button by index using Playwright locator
-            edit_buttons = content_frame.locator('input[type="button"][value="Edit"]')
-            target_edit_btn = edit_buttons.nth(edit_index)
+            # Wait for the button click to process
+            await page.wait_for_timeout(3000)
             
             try:
-                await target_edit_btn.scroll_into_view_if_needed()
-                await page.wait_for_timeout(500)
-                await target_edit_btn.wait_for(state="visible", timeout=10000)
-                await target_edit_btn.click(force=True)
-                
-                logger.info(
-                    LogCategory.EXECUTION,
-                    f"[PHASE 3] ✅ Edit button clicked in section: {section} (button index: {edit_index})"
-                )
-                
-                await page.wait_for_timeout(3000)
-                
-                try:
-                    await content_frame.wait_for_load_state("networkidle", timeout=10000)
-                except:
-                    logger.warning(LogCategory.EXECUTION, "Network didn't reach idle state")
-                
-                await page.wait_for_timeout(1000)
-                
-                logger.info(
-                    LogCategory.EXECUTION,
-                    f"[PHASE 3] Edit button click successful in section: {section}"
-                )
-                
-            except Exception as e:
-                raise RuntimeError(f"Failed to click Edit button in section '{section}': {str(e)}")
+                await content_frame.wait_for_load_state("networkidle", timeout=10000)
+            except:
+                logger.warning(LogCategory.EXECUTION, "Network didn't reach idle state")
+            
+            await page.wait_for_timeout(1000)
+            
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] Edit button click successful in section: {section}"
+            )
+            
         else:
             # Fallback: couldn't find section-specific Edit button
-            total = target_edit_index.get('totalButtons', 0)
+            total = click_result.get('totalButtons', 0)
             logger.error(
                 LogCategory.EXECUTION,
                 f"[ERROR] Could not find Edit button in section '{section}'. Total Edit buttons found: {total}"
