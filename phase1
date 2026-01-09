@@ -39,44 +39,54 @@ elif action_type == "BUTTON":
             f"[PHASE 3] ⚠️ EDIT BUTTON SPECIAL HANDLING ACTIVATED for section: '{section}'"
         )
         
-        # Find the correct Edit button using JavaScript - returns the actual button element
-        click_result = await content_frame.evaluate(
+        # Find the correct Edit button and get its unique onclick attribute
+        button_info = await content_frame.evaluate(
             """
             (sectionName) => {
-                // Find all Edit buttons
                 const editButtons = Array.from(document.querySelectorAll('input[type="button"][value="Edit"]'));
                 
-                console.log('Found', editButtons.length, 'Edit buttons');
+                console.log('=== EDIT BUTTON SEARCH ===');
+                console.log('Total Edit buttons found:', editButtons.length);
+                console.log('Looking for section:', sectionName);
                 
+                // Log all Edit buttons with their context
+                editButtons.forEach((btn, idx) => {
+                    const onclick = btn.getAttribute('onclick') || 'no-onclick';
+                    let parent = btn.parentElement;
+                    let context = '';
+                    let depth = 0;
+                    
+                    while (parent && depth < 5) {
+                        const text = parent.textContent?.substring(0, 100) || '';
+                        if (text.length > context.length) {
+                            context = text;
+                        }
+                        parent = parent.parentElement;
+                        depth++;
+                    }
+                    
+                    console.log(`Button ${idx}: onclick="${onclick.substring(0, 50)}...", context="${context.substring(0, 80)}..."`);
+                });
+                
+                // Now find the matching button
                 for (let i = 0; i < editButtons.length; i++) {
                     const btn = editButtons[i];
                     let parent = btn.parentElement;
                     let depth = 0;
                     
-                    // Search up the DOM tree for section match
                     while (parent && depth < 10) {
                         const parentText = parent.textContent || '';
                         
-                        // Check if this parent contains the section name
                         if (parentText.toLowerCase().includes(sectionName.toLowerCase())) {
-                            // Make sure this is a reasonable parent (not the entire page)
-                            const isReasonableParent = parentText.length < 2000;
-                            
-                            if (isReasonableParent) {
-                                console.log('Match found at index', i, 'parent tag:', parent.tagName);
-                                
-                                // Scroll into view
-                                btn.scrollIntoView({behavior: 'instant', block: 'center'});
-                                
-                                // Click immediately (no setTimeout)
-                                btn.click();
+                            if (parentText.length < 2000) {
+                                console.log('✅ MATCH FOUND at index', i);
                                 
                                 return {
-                                    success: true,
+                                    found: true,
                                     index: i,
+                                    onclick: btn.getAttribute('onclick'),
                                     buttonId: btn.id || 'no-id',
-                                    onclick: btn.getAttribute('onclick') || 'no-onclick',
-                                    matchedText: parentText.substring(0, 150)
+                                    matchedText: parentText.substring(0, 100)
                                 };
                             }
                         }
@@ -86,8 +96,8 @@ elif action_type == "BUTTON":
                     }
                 }
                 
-                console.log('No match found for section:', sectionName);
-                return {success: false, totalButtons: editButtons.length};
+                console.log('❌ NO MATCH FOUND');
+                return {found: false, totalButtons: editButtons.length};
             }
             """,
             section
@@ -95,52 +105,72 @@ elif action_type == "BUTTON":
         
         logger.info(
             LogCategory.EXECUTION,
-            f"[DEBUG] Edit button click result: {click_result}"
+            f"[DEBUG] Button search result: {button_info}"
         )
         
-        if click_result.get('success'):
-            edit_index = click_result['index']
-            onclick_attr = click_result.get('onclick', '')
+        if button_info.get('found'):
+            onclick_value = button_info.get('onclick')
+            
+            if not onclick_value or onclick_value == 'None':
+                raise RuntimeError(f"Edit button found but has no onclick attribute")
             
             logger.info(
                 LogCategory.EXECUTION,
-                f"[PHASE 3] ✅ Edit button clicked via JavaScript in section: {section}"
-            )
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[DEBUG] Button index: {edit_index}, onclick: {onclick_attr}"
-            )
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[DEBUG] Matched text: {click_result.get('matchedText', '')}"
+                f"[DEBUG] Target button onclick: {onclick_value[:80]}..."
             )
             
-            # Wait for the JSF form submission to process
+            # Now click using the unique onclick attribute as selector
+            click_success = await content_frame.evaluate(
+                """
+                (onclickValue) => {
+                    const allEditButtons = document.querySelectorAll('input[type="button"][value="Edit"]');
+                    
+                    for (let btn of allEditButtons) {
+                        const btnOnclick = btn.getAttribute('onclick');
+                        
+                        if (btnOnclick === onclickValue) {
+                            console.log('🎯 Found exact button match by onclick attribute');
+                            btn.scrollIntoView({behavior: 'instant', block: 'center'});
+                            
+                            // Force focus and click
+                            btn.focus();
+                            btn.click();
+                            
+                            console.log('✅ Button clicked');
+                            return true;
+                        }
+                    }
+                    
+                    console.log('❌ Could not find button with matching onclick');
+                    return false;
+                }
+                """,
+                onclick_value
+            )
+            
+            if not click_success:
+                raise RuntimeError(f"Could not click Edit button with onclick: {onclick_value[:50]}")
+            
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] ✅ Edit button clicked successfully in section: {section}"
+            )
+            
+            # Wait for JSF to process
             await page.wait_for_timeout(2000)
             
-            # Wait for page to stabilize after Edit click
             try:
                 await page.wait_for_load_state("networkidle", timeout=10000)
             except:
-                logger.warning(LogCategory.EXECUTION, "Network didn't reach idle state")
+                logger.warning(LogCategory.EXECUTION, "Network didn't stabilize")
             
             await page.wait_for_timeout(2000)
             
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[PHASE 3] Edit button click successful in section: {section}"
-            )
-            
         else:
-            # Fallback: couldn't find section-specific Edit button
-            total = click_result.get('totalButtons', 0)
-            logger.error(
-                LogCategory.EXECUTION,
-                f"[ERROR] Could not find Edit button in section '{section}'. Total Edit buttons found: {total}"
-            )
+            total = button_info.get('totalButtons', 0)
             raise RuntimeError(
-                f"Could not locate Edit button in section '{section}'. "
-                f"Found {total} Edit buttons total, but none matched the section."
+                f"Could not find Edit button in section '{section}'. "
+                f"Total buttons: {total}. Check logs for button details."
             )
     
     else:
