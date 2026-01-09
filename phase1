@@ -39,7 +39,7 @@ elif action_type == "BUTTON":
             f"[PHASE 3] ⚠️ EDIT BUTTON SPECIAL HANDLING ACTIVATED for section: '{section}'"
         )
         
-        # Find AND CLICK the correct Edit button using pure JavaScript
+        # Find the correct Edit button using JavaScript - returns the actual button element
         click_result = await content_frame.evaluate(
             """
             (sectionName) => {
@@ -65,22 +65,17 @@ elif action_type == "BUTTON":
                             if (isReasonableParent) {
                                 console.log('Match found at index', i, 'parent tag:', parent.tagName);
                                 
-                                // ============================================
-                                // CLICK IT DIRECTLY IN JAVASCRIPT
-                                // ============================================
-                                
-                                // Scroll into view first
+                                // Scroll into view
                                 btn.scrollIntoView({behavior: 'instant', block: 'center'});
                                 
-                                // Wait a moment, then click
-                                setTimeout(() => {
-                                    btn.click();
-                                }, 200);
+                                // Click immediately (no setTimeout)
+                                btn.click();
                                 
                                 return {
                                     success: true,
                                     index: i,
                                     buttonId: btn.id || 'no-id',
+                                    onclick: btn.getAttribute('onclick') || 'no-onclick',
                                     matchedText: parentText.substring(0, 150)
                                 };
                             }
@@ -105,25 +100,31 @@ elif action_type == "BUTTON":
         
         if click_result.get('success'):
             edit_index = click_result['index']
+            onclick_attr = click_result.get('onclick', '')
             
             logger.info(
                 LogCategory.EXECUTION,
-                f"[PHASE 3] ✅ Edit button clicked via JavaScript in section: {section} (button index: {edit_index})"
+                f"[PHASE 3] ✅ Edit button clicked via JavaScript in section: {section}"
+            )
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Button index: {edit_index}, onclick: {onclick_attr}"
             )
             logger.info(
                 LogCategory.EXECUTION,
                 f"[DEBUG] Matched text: {click_result.get('matchedText', '')}"
             )
             
-            # Wait for the button click to process
-            await page.wait_for_timeout(3000)
+            # Wait for the JSF form submission to process
+            await page.wait_for_timeout(2000)
             
+            # Wait for page to stabilize after Edit click
             try:
-                await content_frame.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_load_state("networkidle", timeout=10000)
             except:
                 logger.warning(LogCategory.EXECUTION, "Network didn't reach idle state")
             
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
             
             logger.info(
                 LogCategory.EXECUTION,
