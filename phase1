@@ -39,89 +39,50 @@ elif action_type == "BUTTON":
             f"[PHASE 3] ⚠️ EDIT BUTTON SPECIAL HANDLING ACTIVATED for section: '{section}'"
         )
         
-        # First, let's see what's on the page
-        page_structure = await content_frame.evaluate("""
-            () => {
-                const allDivs = Array.from(document.querySelectorAll('div, fieldset, section'));
-                const editButtons = Array.from(document.querySelectorAll('input[value="Edit"], button:has-text("Edit")'));
-                
-                return {
-                    totalDivs: allDivs.length,
-                    totalEditButtons: editButtons.length,
-                    editButtonInfo: editButtons.map((btn, idx) => {
-                        let parent = btn.parentElement;
-                        let parentText = '';
-                        let depth = 0;
-                        
-                        // Go up to find meaningful parent text
-                        while (parent && depth < 5) {
-                            const text = parent.textContent?.substring(0, 200) || '';
-                            if (text.length > parentText.length) {
-                                parentText = text;
-                            }
-                            parent = parent.parentElement;
-                            depth++;
-                        }
-                        
-                        return {
-                            index: idx,
-                            id: btn.id,
-                            value: btn.value,
-                            parentText: parentText.substring(0, 200)
-                        };
-                    })
-                };
-            }
-        """)
-        
-        logger.info(
-            LogCategory.EXECUTION,
-            f"[DEBUG] Page has {page_structure['totalEditButtons']} Edit buttons"
-        )
-        
-        for btn_info in page_structure['editButtonInfo']:
-            logger.info(
-                LogCategory.EXECUTION,
-                f"[DEBUG] Edit button {btn_info['index']}: id={btn_info['id']}, parent contains: {btn_info['parentText'][:100]}..."
-            )
-        
-        # Now try to find the right Edit button by matching section text
+        # Find the correct Edit button using pure JavaScript
         target_edit_index = await content_frame.evaluate(
-            f"""
-            (sectionName) => {{
-                const editButtons = Array.from(document.querySelectorAll('input[value="Edit"], button'));
+            """
+            (sectionName) => {
+                // Find all Edit buttons (input with value="Edit")
+                const editButtons = Array.from(document.querySelectorAll('input[type="button"][value="Edit"]'));
                 
-                for (let i = 0; i < editButtons.length; i++) {{
+                console.log('Found', editButtons.length, 'Edit buttons');
+                
+                for (let i = 0; i < editButtons.length; i++) {
                     const btn = editButtons[i];
                     let parent = btn.parentElement;
-                    let foundMatch = false;
                     let depth = 0;
                     
-                    // Search up the DOM tree
-                    while (parent && depth < 10) {{
+                    // Search up the DOM tree for section match
+                    while (parent && depth < 10) {
                         const parentText = parent.textContent || '';
                         
                         // Check if this parent contains the section name
-                        if (parentText.toLowerCase().includes(sectionName.toLowerCase())) {{
+                        if (parentText.toLowerCase().includes(sectionName.toLowerCase())) {
                             // Make sure this is a reasonable parent (not the entire page)
-                            if (parentText.length < 1000) {{
-                                return {{
+                            // Look for section boundaries like fieldset, div with certain structure
+                            const isReasonableParent = parentText.length < 2000;
+                            
+                            if (isReasonableParent) {
+                                console.log('Match found at index', i, 'parent tag:', parent.tagName);
+                                return {
                                     found: true,
                                     index: i,
-                                    buttonId: btn.id,
+                                    buttonId: btn.id || '',
                                     parentTag: parent.tagName,
-                                    matchedText: parentText.substring(0, 200)
-                                }};
-                            }}
-                        }}
+                                    matchedText: parentText.substring(0, 150)
+                                };
+                            }
+                        }
                         
                         parent = parent.parentElement;
                         depth++;
-                    }}
-                }}
+                    }
+                }
                 
-                return {{found: false}};
-            }}
+                console.log('No match found for section:', sectionName);
+                return {found: false, totalButtons: editButtons.length};
+            }
             """,
             section
         )
@@ -137,11 +98,15 @@ elif action_type == "BUTTON":
             
             logger.info(
                 LogCategory.EXECUTION,
-                f"[DEBUG] Found Edit button at index {edit_index} for section '{section}'"
+                f"[DEBUG] ✅ Found Edit button at index {edit_index} for section '{section}'"
+            )
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Matched text: {target_edit_index.get('matchedText', '')}"
             )
             
-            # Click the specific Edit button by index
-            edit_buttons = content_frame.locator("input[value='Edit'], button:has-text('Edit')")
+            # Click the specific Edit button by index using Playwright locator
+            edit_buttons = content_frame.locator('input[type="button"][value="Edit"]')
             target_edit_btn = edit_buttons.nth(edit_index)
             
             try:
@@ -173,13 +138,14 @@ elif action_type == "BUTTON":
                 raise RuntimeError(f"Failed to click Edit button in section '{section}': {str(e)}")
         else:
             # Fallback: couldn't find section-specific Edit button
+            total = target_edit_index.get('totalButtons', 0)
             logger.error(
                 LogCategory.EXECUTION,
-                f"[ERROR] Could not find Edit button in section '{section}'"
+                f"[ERROR] Could not find Edit button in section '{section}'. Total Edit buttons found: {total}"
             )
             raise RuntimeError(
                 f"Could not locate Edit button in section '{section}'. "
-                f"Available sections logged above."
+                f"Found {total} Edit buttons total, but none matched the section."
             )
     
     else:
