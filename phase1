@@ -36,70 +36,123 @@ elif action_type == "BUTTON":
     if button_name == "edit" and section:
         logger.info(
             LogCategory.EXECUTION,
-            f"[PHASE 3] Special Edit button handling for section: {section}"
+            f"[PHASE 3] ⚠️ EDIT BUTTON SPECIAL HANDLING ACTIVATED for section: '{section}'"
         )
         
-        # Strategy: Find the section by its heading text, then find Edit button within it
-        # Look for div/fieldset that contains the section name
-        
-        # Try multiple section container strategies
-        section_container = None
-        
-        # Strategy 1: Look for exact section text in a div
-        try:
-            section_container = content_frame.locator(
-                f"div:has-text('{section}'):has(input[value='Edit'])"
-            ).first
-            await section_container.wait_for(state="visible", timeout=5000)
-            logger.info(LogCategory.EXECUTION, "[DEBUG] Found section using strategy 1")
-        except:
-            pass
-        
-        # Strategy 2: Look for fieldset or panel with legend containing section name
-        if not section_container:
-            try:
-                section_container = content_frame.locator(
-                    f"fieldset:has(legend:has-text('{section}'))"
-                ).first
-                await section_container.wait_for(state="visible", timeout=5000)
-                logger.info(LogCategory.EXECUTION, "[DEBUG] Found section using strategy 2")
-            except:
-                pass
-        
-        # Strategy 3: Find any container with the section text and an Edit button
-        if not section_container:
-            try:
-                # More flexible - find any div/section/fieldset containing both the text and Edit button
-                containers = content_frame.locator("div, section, fieldset")
-                count = await containers.count()
+        # First, let's see what's on the page
+        page_structure = await content_frame.evaluate("""
+            () => {
+                const allDivs = Array.from(document.querySelectorAll('div, fieldset, section'));
+                const editButtons = Array.from(document.querySelectorAll('input[value="Edit"], button:has-text("Edit")'));
                 
-                for i in range(count):
-                    container = containers.nth(i)
-                    text_content = await container.text_content()
-                    
-                    if text_content and section.lower() in text_content.lower():
-                        # Check if this container has an Edit button
-                        edit_in_container = container.locator("input[value='Edit'], button:has-text('Edit')")
-                        if await edit_in_container.count() > 0:
-                            section_container = container
-                            logger.info(LogCategory.EXECUTION, f"[DEBUG] Found section using strategy 3 at index {i}")
-                            break
-            except:
-                pass
+                return {
+                    totalDivs: allDivs.length,
+                    totalEditButtons: editButtons.length,
+                    editButtonInfo: editButtons.map((btn, idx) => {
+                        let parent = btn.parentElement;
+                        let parentText = '';
+                        let depth = 0;
+                        
+                        // Go up to find meaningful parent text
+                        while (parent && depth < 5) {
+                            const text = parent.textContent?.substring(0, 200) || '';
+                            if (text.length > parentText.length) {
+                                parentText = text;
+                            }
+                            parent = parent.parentElement;
+                            depth++;
+                        }
+                        
+                        return {
+                            index: idx,
+                            id: btn.id,
+                            value: btn.value,
+                            parentText: parentText.substring(0, 200)
+                        };
+                    })
+                };
+            }
+        """)
         
-        if section_container:
-            # Found the section, now click Edit button within it
-            edit_button = section_container.locator("input[value='Edit'], button:has-text('Edit')").first
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[DEBUG] Page has {page_structure['totalEditButtons']} Edit buttons"
+        )
+        
+        for btn_info in page_structure['editButtonInfo']:
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Edit button {btn_info['index']}: id={btn_info['id']}, parent contains: {btn_info['parentText'][:100]}..."
+            )
+        
+        # Now try to find the right Edit button by matching section text
+        target_edit_index = await content_frame.evaluate(
+            f"""
+            (sectionName) => {{
+                const editButtons = Array.from(document.querySelectorAll('input[value="Edit"], button'));
+                
+                for (let i = 0; i < editButtons.length; i++) {{
+                    const btn = editButtons[i];
+                    let parent = btn.parentElement;
+                    let foundMatch = false;
+                    let depth = 0;
+                    
+                    // Search up the DOM tree
+                    while (parent && depth < 10) {{
+                        const parentText = parent.textContent || '';
+                        
+                        // Check if this parent contains the section name
+                        if (parentText.toLowerCase().includes(sectionName.toLowerCase())) {{
+                            // Make sure this is a reasonable parent (not the entire page)
+                            if (parentText.length < 1000) {{
+                                return {{
+                                    found: true,
+                                    index: i,
+                                    buttonId: btn.id,
+                                    parentTag: parent.tagName,
+                                    matchedText: parentText.substring(0, 200)
+                                }};
+                            }}
+                        }}
+                        
+                        parent = parent.parentElement;
+                        depth++;
+                    }}
+                }}
+                
+                return {{found: false}};
+            }}
+            """,
+            section
+        )
+        
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[DEBUG] Section match result: {target_edit_index}"
+        )
+        
+        if target_edit_index.get('found'):
+            # Found the right Edit button!
+            edit_index = target_edit_index['index']
+            
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[DEBUG] Found Edit button at index {edit_index} for section '{section}'"
+            )
+            
+            # Click the specific Edit button by index
+            edit_buttons = content_frame.locator("input[value='Edit'], button:has-text('Edit')")
+            target_edit_btn = edit_buttons.nth(edit_index)
             
             try:
-                await edit_button.scroll_into_view_if_needed()
+                await target_edit_btn.scroll_into_view_if_needed()
                 await page.wait_for_timeout(500)
-                await edit_button.wait_for(state="visible", timeout=10000)
-                await edit_button.click(force=True)
+                await target_edit_btn.wait_for(state="visible", timeout=10000)
+                await target_edit_btn.click(force=True)
                 
                 logger.info(
                     LogCategory.EXECUTION,
-                    f"[PHASE 3] Edit button clicked in section: {section}"
+                    f"[PHASE 3] ✅ Edit button clicked in section: {section} (button index: {edit_index})"
                 )
                 
                 await page.wait_for_timeout(3000)
@@ -111,17 +164,27 @@ elif action_type == "BUTTON":
                 
                 await page.wait_for_timeout(1000)
                 
-                # Success - continue to next step
-                # (No 'continue' statement here - let it fall through naturally)
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] Edit button click successful in section: {section}"
+                )
                 
             except Exception as e:
                 raise RuntimeError(f"Failed to click Edit button in section '{section}': {str(e)}")
         else:
-            raise RuntimeError(f"Could not locate section '{section}' with Edit button")
+            # Fallback: couldn't find section-specific Edit button
+            logger.error(
+                LogCategory.EXECUTION,
+                f"[ERROR] Could not find Edit button in section '{section}'"
+            )
+            raise RuntimeError(
+                f"Could not locate Edit button in section '{section}'. "
+                f"Available sections logged above."
+            )
     
     else:
         # ------------------------------
-        # NORMAL BUTTON HANDLING (non-Edit or no section)
+        # NORMAL BUTTON HANDLING
         # ------------------------------
         if section:
             section_root = content_frame.locator(
@@ -212,17 +275,3 @@ elif action_type == "BUTTON":
             raise RuntimeError(
                 f"Button '{button_name}' not found in {'section: ' + section if section else 'frame'}"
             )
-```
-
-## How to Use It
-
-Update your test steps to include the section name:
-```
-When the user clicks the button in the ERBE Claim section with name = Edit
-When the user clicks the button in the Specialist Only section with name = Edit
-When the user clicks the button in the Does this claim require back dating section with name = Edit
-```
-
-Or using the visible section headers:
-```
-Step X: When the user clicks the button in the ERBE Claim with name = Edit
