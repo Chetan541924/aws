@@ -57,6 +57,12 @@ elif action_type == "BUTTON":
         buttons = content_frame.locator(
             "input[type='button'], input[type='submit'], button"
         )
+    resolved_button_meta = {
+        "value": None,
+        "text": None,
+        "id": None,
+        "index": None
+    }
 
     clicked = False
 
@@ -109,6 +115,13 @@ elif action_type == "BUTTON":
             
             # Click the button
             await btn.click(force=True)
+            resolved_button_meta = {
+                "value": value,
+                "text": text,
+                "id": id_,
+                "index": i + 1
+            }
+
             
             logger.info(
                 LogCategory.EXECUTION,
@@ -142,9 +155,82 @@ elif action_type == "BUTTON":
     # ✅ FIXED: Check moved OUTSIDE loop
     # ------------------------------
     if not clicked:
+        # ---------------- STEP EXECUTION LOG : BUTTON (FAIL) ----------------
+        step_counter += 1
+        
+        step_execution_logs.append({
+            "step_order": step_counter,
+            "gherkin_step": step_name,
+            "step_type": "WHEN",
+            "action_type": "BUTTON",
+            "status": "FAIL",
+            "error_message": f"Button '{button_name}' not found",
+        
+            "frame_type": "content",
+            "frame_url": content_frame.url if content_frame else None,
+        
+            "locator_strategy": "semantic_button_match",
+            "locator_value": {
+                "button_name": button_name,
+                "section": section
+            },
+        
+            "resolved_element_tag": None,
+            "resolved_element_text": None,
+            "resolved_element_id": None,
+            "resolved_element_name": None,
+            "resolved_element_xpath": None,
+        
+            "input_value": button_name,
+            "confidence": "LOW",
+        
+            "execution_ts": datetime.now().isoformat()
+        })
+
         raise RuntimeError(
             f"Button '{button_name}' not found in {'section: ' + section if section else 'frame'}"
         )
     
     # ✅ ADDED: Continue to next step
     continue
+    # ---------------- STEP EXECUTION LOG : BUTTON ----------------
+    step_counter += 1
+    
+    frame_url = content_frame.url if content_frame else None
+    
+    step_execution_logs.append({
+        "step_order": step_counter,
+        "gherkin_step": step_name,
+        "step_type": "WHEN",
+        "action_type": "BUTTON",
+        "status": "PASS",
+        "error_message": None,
+    
+        # Frame details
+        "frame_type": "content",
+        "frame_url": frame_url,
+    
+        # Locator strategy
+        "locator_strategy": "semantic_button_match",
+        "locator_value": {
+            "button_name": button_name,
+            "section": section,
+            "matched_on": resolved_button_meta
+        },
+    
+        # Resolved element metadata
+        "resolved_element_tag": "button",
+        "resolved_element_text": resolved_button_meta["text"],
+        "resolved_element_id": resolved_button_meta["id"],
+        "resolved_element_name": None,
+        "resolved_element_xpath": None,  # intentionally omitted (dynamic UI)
+    
+        # Input semantics
+        "input_value": button_name,
+    
+        # Confidence
+        "confidence": "HIGH",
+    
+        "execution_ts": datetime.now().isoformat()
+    })
+
