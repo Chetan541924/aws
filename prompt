@@ -1,31 +1,66 @@
-CRITICAL IFRAME EXECUTION RULES (MANDATORY):
+if execution_failed:
+    step_counter += 1
 
-- The application may use nested, dynamic, or changing iframes.
-- NEVER directly interact with page using:
-    page.click(), page.fill(), page.press(), page.locator(), page.get_by*().
-- For EVERY user interaction:
-    ctx = resolve_context(page, "<selector>")
-    ctx.click / ctx.fill / ctx.press must be used.
-- resolve_context(page, selector) will be provided at runtime.
-- Do NOT cache frame references.
-- Do NOT use page.frames[index].
-- Iframes may change after navigation; always resolve context again per step.
+    step_execution_logs.append({
+        "step_order": step_counter,
+        "gherkin_step": step_name,
+        "step_type": "WHEN",
+        "action_type": "CHECKBOX",
+        "status": "FAIL",
+        "error_message": failure_reason,
 
-NAVIGATION RULES:
+        "frame_type": "content",
+        "frame_url": content_frame.url if content_frame else None,
 
-- If an action causes navigation or page change:
-    - wait using page.wait_for_load_state("networkidle")
-      OR wait for the next required selector using resolve_context.
-- Do NOT use time.sleep() except where explicitly instructed.
+        "locator_strategy": "row_index_checkbox",
+        "locator_value": {
+            "row_index": index + 1 if 'index' in locals() else None
+        },
 
-SELECTOR RULES (MANDATORY):
+        "resolved_element_tag": "input",
+        "resolved_element_text": None,
+        "resolved_element_id": None,
+        "resolved_element_name": None,
+        "resolved_element_xpath": None,
 
-- DO NOT use XPath with contains(text()).
-- DO NOT assume elements are <a> tags.
-- Prefer Playwright accessibility selectors:
-    get_by_role("link", name="...")
-    get_by_role("button", name="...")
-    get_by_role("menuitem", name="...")
-- If text-based selection is required, use:
-    get_by_role or get_by_text (exact match).
-- Only use XPath if no role-based selector is possible.
+        "input_value": step_name,
+        "confidence": "LOW",
+
+        "execution_ts": datetime.now().isoformat()
+    })
+
+    final_status = "FAIL"
+    break   # ⛔ stop execution but DO NOT crash
+
+
+
+
+step_counter += 1
+
+step_execution_logs.append({
+    "step_order": step_counter,
+    "gherkin_step": step_name,
+    "step_type": "WHEN",
+    "action_type": "CHECKBOX",
+    "status": "PASS",
+    "error_message": None,
+
+    "frame_type": "content",
+    "frame_url": content_frame.url if content_frame else None,
+
+    "locator_strategy": "row_index_checkbox",
+    "locator_value": {
+        "row_index": index + 1
+    },
+
+    "resolved_element_tag": "input",
+    "resolved_element_text": None,
+    "resolved_element_id": None,
+    "resolved_element_name": None,
+    "resolved_element_xpath": None,
+
+    "input_value": step_name,
+    "confidence": "HIGH",
+
+    "execution_ts": datetime.now().isoformat()
+})
