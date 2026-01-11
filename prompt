@@ -1,66 +1,39 @@
-if execution_failed:
-    step_counter += 1
-
-    step_execution_logs.append({
-        "step_order": step_counter,
-        "gherkin_step": step_name,
-        "step_type": "WHEN",
-        "action_type": "CHECKBOX",
-        "status": "FAIL",
-        "error_message": failure_reason,
-
-        "frame_type": "content",
-        "frame_url": content_frame.url if content_frame else None,
-
-        "locator_strategy": "row_index_checkbox",
-        "locator_value": {
-            "row_index": index + 1 if 'index' in locals() else None
-        },
-
-        "resolved_element_tag": "input",
-        "resolved_element_text": None,
-        "resolved_element_id": None,
-        "resolved_element_name": None,
-        "resolved_element_xpath": None,
-
-        "input_value": step_name,
-        "confidence": "LOW",
-
-        "execution_ts": datetime.now().isoformat()
-    })
-
-    final_status = "FAIL"
-    break   # ⛔ stop execution but DO NOT crash
-
-
-
-
 step_counter += 1
+
+failure_reason = str(e)
+
+frame_url = content_frame.url if content_frame else None
 
 step_execution_logs.append({
     "step_order": step_counter,
     "gherkin_step": step_name,
     "step_type": "WHEN",
-    "action_type": "CHECKBOX",
-    "status": "PASS",
-    "error_message": None,
+    "action_type": action_type,
+    "status": "FAIL",
+    "error_message": failure_reason,
 
+    # Frame context
     "frame_type": "content",
-    "frame_url": content_frame.url if content_frame else None,
+    "frame_url": frame_url,
 
-    "locator_strategy": "row_index_checkbox",
+    # Locator strategy (best known at failure time)
+    "locator_strategy": "runtime_failure",
     "locator_value": {
-        "row_index": index + 1
+        "reason": failure_reason
     },
 
-    "resolved_element_tag": "input",
+    # Resolved element metadata (unknown on failure)
+    "resolved_element_tag": None,
     "resolved_element_text": None,
     "resolved_element_id": None,
     "resolved_element_name": None,
     "resolved_element_xpath": None,
 
+    # Input semantics
     "input_value": step_name,
-    "confidence": "HIGH",
+
+    # Confidence
+    "confidence": "LOW",
 
     "execution_ts": datetime.now().isoformat()
 })
