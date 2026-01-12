@@ -1,92 +1,45 @@
-# Prepare resolved radio metadata for logging
-resolved_radio_meta = {
-    "group_name": target_group_name,
-    "answer_index": int(answer_index),
-    "radio_id": radio_id,
-    "radio_value": target_radio.get("value"),
-    "total_options": len(target_group_radios)
-}
+# --------------------------------------------------------------
+# Extract dropdown name if present in step (name = ...)
+# --------------------------------------------------------------
+dropdown_name = None
+if "name =" in step_name.lower():
+    dropdown_name = (
+        step_name
+        .lower()
+        .split("name =", 1)[-1]
+        .strip()
+        .strip('"')
+    )
 
 
+# ==============================================================
+# CASE 1.5: Claim Letter dropdown (name-based routing)
+# ==============================================================
+if dropdown_name and "select" in dropdown_name:
+    sel = content_frame.locator("#lettersDropDownId")
+    await sel.wait_for(state="visible", timeout=15000)
 
+    options = sel.locator("option")
+    opt_count = await options.count()
 
-# ---------------- STEP EXECUTION LOG : RADIO ----------------
-step_counter += 1
+    for i in range(opt_count):
+        opt = options.nth(i)
+        text = (await opt.text_content() or "").lower()
+        value = (await opt.get_attribute("value") or "").lower()
 
-frame_url = content_frame.url if content_frame else None
+        if option_text in text or option_text in value:
+            await sel.select_option(value=await opt.get_attribute("value"))
 
-step_execution_logs.append({
-    "step_order": step_counter,
-    "gherkin_step": step_name,
-    "step_type": "WHEN",
-    "action_type": "RADIO",
-    "status": "PASS",
-    "error_message": None,
+            logger.info(
+                LogCategory.EXECUTION,
+                f"[PHASE 3] SELECT successful (Claim Letter): {option_text}"
+            )
+            selected = True
+            break
 
-    # Frame details
-    "frame_type": "content",
-    "frame_url": frame_url,
+    if not selected:
+        raise RuntimeError(
+            f"Option '{option_text}' not found in Claim Letter dropdown"
+        )
 
-    # Locator resolution
-    "locator_strategy": "radio_group_resolution",
-    "locator_value": {
-        "group_name": resolved_radio_meta["group_name"],
-        "answer_index": resolved_radio_meta["answer_index"],
-        "radio_id": resolved_radio_meta["radio_id"],
-        "radio_value": resolved_radio_meta["radio_value"],
-        "total_options": resolved_radio_meta["total_options"]
-    },
-
-    # Resolved element metadata
-    "resolved_element_tag": "input",
-    "resolved_element_text": None,
-    "resolved_element_id": resolved_radio_meta["radio_id"],
-    "resolved_element_name": resolved_radio_meta["group_name"],
-    "resolved_element_xpath": None,
-
-    # Semantic input
-    "input_value": f"answer={answer_index}",
-
-    # Confidence
-    "confidence": "HIGH",
-
-    "execution_ts": datetime.now().isoformat()
-})
-
-
-
-
-
-
-step_counter += 1
-
-step_execution_logs.append({
-    "step_order": step_counter,
-    "gherkin_step": step_name,
-    "step_type": "WHEN",
-    "action_type": "RADIO",
-    "status": "FAIL",
-    "error_message": "some error",
-
-    "frame_type": "content",
-    "frame_url": content_frame.url if content_frame else None,
-
-    "locator_strategy": "radio_group_resolution",
-    "locator_value": {
-        "group_name": target_group_name if 'target_group_name' in locals() else None,
-        "answer_index": answer_index
-    },
-
-    "resolved_element_tag": "input",
-    "resolved_element_text": None,
-    "resolved_element_id": radio_id if 'radio_id' in locals() else None,
-    "resolved_element_name": target_group_name if 'target_group_name' in locals() else None,
-    "resolved_element_xpath": None,
-
-    "input_value": f"answer={answer_index}",
-    "confidence": "LOW",
-
-    "execution_ts": datetime.now().isoformat()
-})
-
-raise RuntimeError("some error")
+    return
