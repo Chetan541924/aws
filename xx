@@ -1,23 +1,15 @@
-# --------------------------------------------------------------
-# Extract dropdown name if present in step (name = ...)
-# --------------------------------------------------------------
-dropdown_name = None
-if "name =" in step_name.lower():
-    dropdown_name = (
-        step_name
-        .lower()
-        .split("name =", 1)[-1]
-        .strip()
-        .strip('"')
-    )
-
-
 # ==============================================================
-# CASE 1.5: Claim Letter dropdown (name-based routing)
+# CASE 1: Claim Letter dropdown (DOM-based routing)
 # ==============================================================
-if dropdown_name and "select" in dropdown_name:
+nav_frame, content_frame = resolve_ccs_frames(page)
+
+if await content_frame.locator("#lettersDropDownId").count() > 0:
+    selected = False
+
     sel = content_frame.locator("#lettersDropDownId")
-    await sel.wait_for(state="visible", timeout=15000)
+
+    # ONLY wait for attachment — no visible, no scroll
+    await sel.wait_for(state="attached", timeout=15000)
 
     options = sel.locator("option")
     opt_count = await options.count()
@@ -28,12 +20,13 @@ if dropdown_name and "select" in dropdown_name:
         value = (await opt.get_attribute("value") or "").lower()
 
         if option_text in text or option_text in value:
-            await sel.select_option(value=await opt.get_attribute("value"))
+            await sel.select_option(value=value)
 
             logger.info(
                 LogCategory.EXECUTION,
                 f"[PHASE 3] SELECT successful (Claim Letter): {option_text}"
             )
+
             selected = True
             break
 
