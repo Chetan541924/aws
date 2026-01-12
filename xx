@@ -3,36 +3,75 @@
 # ==============================================================
 nav_frame, content_frame = resolve_ccs_frames(page)
 
+# Wait for page to stabilize after frame resolution
+await page.wait_for_load_state("networkidle")
+await page.wait_for_timeout(2000)  # Longer wait for iframe content
+
+# Check if Claim Letter dropdown exists
 if await content_frame.locator("#lettersDropDownId").count() > 0:
     selected = False
-
+    
+    # Re-locate the element after waiting (don't reuse old locator)
     sel = content_frame.locator("#lettersDropDownId")
-
-    # ONLY wait for attachment — no visible, no scroll
-    await sel.wait_for(state="attached", timeout=15000)
-
-    options = sel.locator("option")
-    opt_count = await options.count()
-
-    for i in range(opt_count):
-        opt = options.nth(i)
-        text = (await opt.text_content() or "").lower()
-        value = (await opt.get_attribute("value") or "").lower()
-
-        if option_text in text or option_text in value:
-            await sel.select_option(value=value)
-
+    
+    try:
+        # Wait for the select element to be stable in the DOM
+        await sel.wait_for(state="attached", timeout=10000)
+        
+        # Additional wait to ensure it's fully loaded
+        await content_frame.wait_for_timeout(1000)
+        
+        # Re-locate again to ensure we have a fresh reference
+        sel = content_frame.locator("#lettersDropDownId")
+        
+        options = sel.locator("option")
+        opt_count = await options.count()
+        
+        logger.info(
+            LogCategory.EXECUTION,
+            f"[PHASE 3] Found {opt_count} options in Claim Letter dropdown"
+        )
+        
+        for i in range(opt_count):
+            # Re-locate options each iteration to avoid stale references
+            options = sel.locator("option")
+            opt = options.nth(i)
+            
+            text = (await opt.text_content() or "").lower()
+            value = (await opt.get_attribute("value") or "")
+            
             logger.info(
                 LogCategory.EXECUTION,
-                f"[PHASE 3] SELECT successful (Claim Letter): {option_text}"
+                f"[PHASE 3] Checking option {i}: text='{text}', value='{value}'"
             )
-
-            selected = True
-            break
-
-    if not selected:
-        raise RuntimeError(
-            f"Option '{option_text}' not found in Claim Letter dropdown"
+            
+            if option_text in text or option_text.lower() in value.lower():
+                # Use evaluate to set the value directly via JavaScript
+                # This is more reliable than select_option for problematic dropdowns
+                await sel.evaluate(f"""
+                    (element) => {{
+                        element.value = '{value}';
+                        element.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                """)
+                
+                logger.info(
+                    LogCategory.EXECUTION,
+                    f"[PHASE 3] SELECT successful (Claim Letter): '{option_text}' matched '{text}'"
+                )
+                selected = True
+                break
+        
+        if not selected:
+            raise RuntimeError(
+                f"Option '{option_text}' not found in Claim Letter dropdown. Searched {opt_count} options."
+            )
+        
+        return
+        
+    except Exception as e:
+        logger.error(
+            LogCategory.EXECUTION,
+            f"[PHASE 3] Error interacting with Claim Letter dropdown: {str(e)}"
         )
-
-    return
+        raise
